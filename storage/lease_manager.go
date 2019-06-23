@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ibuildthecloud/kvsql/clientv3"
+	"github.com/freeekanayaka/kvsql/clientv3"
 )
 
 // leaseManager is used to manage leases requested from etcd. If a new write

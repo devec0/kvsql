@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ibuildthecloud/kvsql/clientv3/driver"
+	"github.com/freeekanayaka/kvsql/clientv3/driver"
 )
 
 var (

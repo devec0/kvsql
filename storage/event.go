@@ -17,8 +17,8 @@ limitations under the License.
 package etcd3
 
 import (
-	"github.com/ibuildthecloud/kvsql/clientv3"
 	"github.com/coreos/etcd/mvcc/mvccpb"
+	"github.com/freeekanayaka/kvsql/clientv3"
 )
 
 type event struct {

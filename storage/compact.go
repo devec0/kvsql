@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/freeekanayaka/kvsql/clientv3"
 	"k8s.io/klog"
-	"github.com/ibuildthecloud/kvsql/clientv3"
 )
 
 const (

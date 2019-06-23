@@ -22,8 +22,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ibuildthecloud/kvsql/clientv3"
-	"github.com/ibuildthecloud/kvsql/storage"
+	"github.com/freeekanayaka/kvsql/clientv3"
+	etcd3 "github.com/freeekanayaka/kvsql/storage"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/storagebackend"

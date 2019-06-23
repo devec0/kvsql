@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"strings"
 
+	"github.com/freeekanayaka/kvsql/clientv3/driver"
 	"github.com/go-sql-driver/mysql"
-	"github.com/ibuildthecloud/kvsql/clientv3/driver"
 )
 
 var (

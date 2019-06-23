@@ -20,11 +20,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"k8s.io/klog"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+
+	"k8s.io/klog"
 
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -32,7 +33,7 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/value"
 
-	"github.com/ibuildthecloud/kvsql/clientv3"
+	"github.com/freeekanayaka/kvsql/clientv3"
 )
 
 const (

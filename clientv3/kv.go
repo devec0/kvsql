@@ -24,10 +24,10 @@ import (
 	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/docker/docker/pkg/locker"
-	"github.com/ibuildthecloud/kvsql/clientv3/driver"
-	"github.com/ibuildthecloud/kvsql/clientv3/driver/mysql"
-	"github.com/ibuildthecloud/kvsql/clientv3/driver/pgsql"
-	"github.com/ibuildthecloud/kvsql/clientv3/driver/sqlite"
+	"github.com/freeekanayaka/kvsql/clientv3/driver"
+	"github.com/freeekanayaka/kvsql/clientv3/driver/mysql"
+	"github.com/freeekanayaka/kvsql/clientv3/driver/pgsql"
+	"github.com/freeekanayaka/kvsql/clientv3/driver/sqlite"
 	"golang.org/x/net/context"
 )
 
