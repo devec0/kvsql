@@ -110,7 +110,7 @@ func newKV(cfg Config) (*kv, error) {
 
 	switch parts[0] {
 	case "sqlite":
-		if db, err = sqlite.Open(parts[1]); err != nil {
+		if db, err = sqlite.Open(cfg.Dir); err != nil {
 			return nil, err
 		}
 		driver = sqlite.NewSQLite()

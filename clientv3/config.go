@@ -39,4 +39,6 @@ type Config struct {
 	DialTimeout time.Duration
 
 	DialOptions []grpc.DialOption
+
+	Dir string
 }

@@ -2,7 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
-	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/freeekanayaka/kvsql/clientv3/driver"
@@ -63,11 +63,8 @@ func NewSQLite() *driver.Generic {
 	}
 }
 
-func Open(dataSourceName string) (*sql.DB, error) {
-	if dataSourceName == "" {
-		os.MkdirAll("./db", 0700)
-		dataSourceName = "./db/state.db?_journal=WAL&cache=shared"
-	}
+func Open(dir string) (*sql.DB, error) {
+	dataSourceName := filepath.Join(dir, "state.db?_journal=WAL&cache=shared")
 	db, err := sql.Open("sqlite3", dataSourceName)
 	if err != nil {
 		return nil, err
