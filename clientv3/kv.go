@@ -25,6 +25,7 @@ import (
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/docker/docker/pkg/locker"
 	"github.com/freeekanayaka/kvsql/clientv3/driver"
+	"github.com/freeekanayaka/kvsql/clientv3/driver/dqlite"
 	"github.com/freeekanayaka/kvsql/clientv3/driver/mysql"
 	"github.com/freeekanayaka/kvsql/clientv3/driver/pgsql"
 	"github.com/freeekanayaka/kvsql/clientv3/driver/sqlite"
@@ -109,6 +110,11 @@ func newKV(cfg Config) (*kv, error) {
 	)
 
 	switch parts[0] {
+	case "dqlite":
+		if db, err = dqlite.Open(cfg.Dir); err != nil {
+			return nil, err
+		}
+		driver = dqlite.NewDQLite()
 	case "sqlite":
 		if db, err = sqlite.Open(cfg.Dir); err != nil {
 			return nil, err

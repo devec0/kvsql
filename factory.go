@@ -71,7 +71,7 @@ func newETCD3Client(c storagebackend.Config) (*clientv3.Client, error) {
 	}
 
 	if len(cfg.Endpoints) == 0 {
-		cfg.Endpoints = []string{"sqlite://"}
+		cfg.Endpoints = []string{"dqlite://"}
 	}
 
 	if cfg.Dir == "" {
