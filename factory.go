@@ -65,18 +65,14 @@ func NewKVSQLHealthCheck(c storagebackend.Config) (func() error, error) {
 }
 
 func newETCD3Client(c storagebackend.Config) (*clientv3.Client, error) {
+	if c.Dir == "" {
+		return nil, fmt.Errorf("no storage directory provided")
+	}
+
 	cfg := clientv3.Config{
-		Endpoints: c.Transport.ServerList,
-		Dir:       c.Dir,
+		Dir: c.Dir,
 	}
 
-	if len(cfg.Endpoints) == 0 {
-		cfg.Endpoints = []string{"dqlite://"}
-	}
-
-	if cfg.Dir == "" {
-		cfg.Dir = "./db/"
-	}
 	client, err := clientv3.New(cfg)
 	return client, err
 }

@@ -83,11 +83,7 @@ func newKV(cfg Config) (*kv, error) {
 	connectionsLock.Lock()
 	defer connectionsLock.Unlock()
 
-	if len(cfg.Endpoints) != 1 {
-		return nil, fmt.Errorf("exactly one endpoint required for DB setting, got %v", cfg.Endpoints)
-	}
-
-	key := cfg.Endpoints[0]
+	key := "dqlite"
 
 	if kv, ok := connections[key]; ok {
 		return kv, nil

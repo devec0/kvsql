@@ -22,9 +22,6 @@ import (
 )
 
 type Config struct {
-	// Endpoints is a list of URLs.
-	Endpoints []string `json:"endpoints"`
-
 	// DialKeepAliveTime is the time in seconds after which client pings the server to see if
 	// transport is alive.
 	DialKeepAliveTime time.Duration `json:"dial-keep-alive-time"`
