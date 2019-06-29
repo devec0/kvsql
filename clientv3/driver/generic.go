@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	dqlite "github.com/CanonicalLtd/go-dqlite"
 	"github.com/freeekanayaka/kvsql/pkg/broadcast"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -18,7 +19,8 @@ type Generic struct {
 	// revision must be first to ensure that this is properly aligned for atomic.LoadInt64
 	revision int64
 
-	db *sql.DB
+	db     *sql.DB
+	server *dqlite.Server
 
 	CleanupSQL      string
 	GetSQL          string
@@ -34,13 +36,14 @@ type Generic struct {
 	changes     chan *KeyValue
 	broadcaster broadcast.Broadcaster
 	cancel      func()
+	stopped     chan struct{}
 }
 
-func (g *Generic) Start(ctx context.Context, db *sql.DB) error {
-	g.db = db
+func (g *Generic) Start(ctx context.Context) error {
 	g.changes = make(chan *KeyValue, 1024)
+	g.stopped = make(chan struct{})
 
-	row := db.QueryRowContext(ctx, g.GetRevisionSQL)
+	row := g.db.QueryRowContext(ctx, g.GetRevisionSQL)
 	rev := sql.NullInt64{}
 	if err := row.Scan(&rev); err != nil {
 		return errors.Wrap(err, "Failed to initialize revision")
@@ -55,6 +58,9 @@ func (g *Generic) Start(ctx context.Context, db *sql.DB) error {
 		for {
 			select {
 			case <-ctx.Done():
+				g.db.Close()
+				g.server.Close()
+				close(g.stopped)
 				return
 			case <-time.After(time.Minute):
 				_, err := g.ExecContext(ctx, g.CleanupSQL, time.Now().Unix())
@@ -71,6 +77,10 @@ func (g *Generic) Start(ctx context.Context, db *sql.DB) error {
 	}()
 
 	return nil
+}
+
+func (g *Generic) WaitStopped() {
+	<-g.stopped
 }
 
 func (g *Generic) cleanup(ctx context.Context) error {

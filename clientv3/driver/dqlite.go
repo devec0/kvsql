@@ -1,11 +1,16 @@
-package mysql
+package driver
 
 import (
 	"database/sql"
+	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/freeekanayaka/kvsql/clientv3/driver"
-	"github.com/go-sql-driver/mysql"
+	dqlite "github.com/CanonicalLtd/go-dqlite"
+	"github.com/ghodss/yaml"
 )
 
 var (
@@ -30,7 +35,7 @@ INSERT INTO key_value(` + fieldList + `)
 	schema = []string{
 		`create table if not exists key_value
 			(
-				name TEXT,
+				name INTEGER,
 				value BLOB,
 				create_revision INTEGER,
 				revision INTEGER,
@@ -38,18 +43,16 @@ INSERT INTO key_value(` + fieldList + `)
 				version INTEGER,
 				del INTEGER,
 				old_value BLOB,
-				old_revision INTEGER,
-				id INTEGER AUTO_INCREMENT,
-				PRIMARY KEY (id)
+				id INTEGER primary key autoincrement,
+				old_revision INTEGER
 			)`,
+		`create index if not exists name_idx on key_value (name)`,
+		`create index if not exists revision_idx on key_value (revision)`,
 	}
-	nameIdx     = "create index name_idx on key_value (name(100))"
-	revisionIdx = "create index revision_idx on key_value (revision)"
-	createDB    = "create database if not exists kubernetes"
 )
 
-func NewMySQL() *driver.Generic {
-	return &driver.Generic{
+func newGeneric() *Generic {
+	return &Generic{
 		CleanupSQL:      "DELETE FROM key_value WHERE ttl > 0 AND ttl < ?",
 		GetSQL:          "SELECT id, " + fieldList + " FROM key_value WHERE name = ? ORDER BY revision DESC limit ?",
 		ListSQL:         strings.Replace(strings.Replace(baseList, "%REV%", "", -1), "%RES%", "", -1),
@@ -59,28 +62,62 @@ func NewMySQL() *driver.Generic {
 		InsertSQL:      insertSQL,
 		ReplaySQL:      "SELECT id, " + fieldList + " FROM key_value WHERE name like ? and revision >= ? ORDER BY revision ASC",
 		GetRevisionSQL: "SELECT MAX(revision) FROM key_value",
-		ToDeleteSQL:    "SELECT count(*), name, max(revision) FROM key_value GROUP BY name,del HAVING count(*) > 1 or (count(*)=1 and del=1)",
+		ToDeleteSQL:    "SELECT count(*) c, name, max(revision) FROM key_value GROUP BY name HAVING c > 1 or (c = 1 and del = 1)",
 		DeleteOldSQL:   "DELETE FROM key_value WHERE name = ? AND (revision < ? OR (revision = ? AND del = 1))",
 	}
 }
 
-func Open(dataSourceName string) (*sql.DB, error) {
-	if dataSourceName == "" {
-		dataSourceName = "root@unix(/var/run/mysqld/mysqld.sock)/"
-	}
-	// get database name
-	dsList := strings.Split(dataSourceName, "/")
-	databaseName := dsList[len(dsList)-1]
-	if databaseName == "" {
-		if err := createDBIfNotExist(dataSourceName); err != nil {
-			return nil, err
+func NewDQLite(dir string) (*Generic, error) {
+	infoPath := filepath.Join(dir, "info.yaml")
+	if _, err := os.Stat(infoPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("no dqlite configuration found: please run 'kubectl dqlite bootstrap' or 'kubectl dqlite join'")
 		}
-		dataSourceName = dataSourceName + "kubernetes"
+		return nil, err
+
 	}
-	db, err := sql.Open("mysql", dataSourceName)
+
+	info := dqlite.ServerInfo{}
+	data, err := ioutil.ReadFile(infoPath)
 	if err != nil {
 		return nil, err
 	}
+	err = yaml.Unmarshal(data, &info)
+	if err != nil {
+		return nil, err
+	}
+
+	server, err := dqlite.NewServer(info, dir)
+	if err != nil {
+		return nil, err
+	}
+	listener, err := net.Listen("tcp", info.Address)
+	if err != nil {
+		return nil, err
+	}
+	err = server.Start(listener)
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := dqlite.DefaultServerStore(filepath.Join(dir, "servers.sql"))
+	if err != nil {
+		return nil, err
+	}
+
+	driver, err := dqlite.NewDriver(store)
+	if err != nil {
+		return nil, err
+	}
+	sql.Register("dqlite", driver)
+
+	db, err := sql.Open("dqlite", "k8s")
+	if err != nil {
+		return nil, err
+	}
+
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	for _, stmt := range schema {
 		_, err := db.Exec(stmt)
@@ -88,41 +125,10 @@ func Open(dataSourceName string) (*sql.DB, error) {
 			return nil, err
 		}
 	}
-	// check if duplicate indexes
-	indexes := []string{
-		nameIdx,
-		revisionIdx}
 
-	for _, idx := range indexes {
-		err := createIndex(db, idx)
-		if err != nil {
-			return nil, err
-		}
-	}
+	g := newGeneric()
+	g.db = db
+	g.server = server
 
-	return db, nil
-}
-
-func createDBIfNotExist(dataSourceName string) error {
-	db, err := sql.Open("mysql", dataSourceName)
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec(createDB)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func createIndex(db *sql.DB, indexStmt string) error {
-	_, err := db.Exec(indexStmt)
-	if err != nil {
-		// check if its a duplicate error
-		if err.(*mysql.MySQLError).Number == 1061 {
-			return nil
-		}
-		return err
-	}
-	return nil
+	return g, nil
 }

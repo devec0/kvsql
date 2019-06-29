@@ -16,19 +16,12 @@ package clientv3
 
 import (
 	"bytes"
-	"database/sql"
-	"fmt"
-	"strings"
 	"sync"
 
 	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/docker/docker/pkg/locker"
 	"github.com/freeekanayaka/kvsql/clientv3/driver"
-	"github.com/freeekanayaka/kvsql/clientv3/driver/dqlite"
-	"github.com/freeekanayaka/kvsql/clientv3/driver/mysql"
-	"github.com/freeekanayaka/kvsql/clientv3/driver/pgsql"
-	"github.com/freeekanayaka/kvsql/clientv3/driver/sqlite"
 	"golang.org/x/net/context"
 )
 
@@ -41,10 +34,9 @@ type (
 )
 
 var (
-	connections     map[string]*kv
-	connectionsCtx  context.Context
-	CloseDB         func()
-	connectionsLock sync.Mutex
+	connection      *kv
+	connectionLock  sync.Mutex
+	connectionClose func()
 )
 
 type KV interface {
@@ -80,63 +72,32 @@ type kv struct {
 }
 
 func newKV(cfg Config) (*kv, error) {
-	connectionsLock.Lock()
-	defer connectionsLock.Unlock()
+	connectionLock.Lock()
+	defer connectionLock.Unlock()
 
-	key := "dqlite"
-
-	if kv, ok := connections[key]; ok {
+	if kv := connection; kv != nil {
 		return kv, nil
 	}
 
-	if connections == nil {
-		connections = map[string]*kv{}
-		connectionsCtx, CloseDB = context.WithCancel(context.Background())
+	driver, err := driver.NewDQLite(cfg.Dir)
+	if err != nil {
+		return nil, err
 	}
 
-	parts := strings.SplitN(key, "://", 2)
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid kvsql string")
-	}
+	ctx, cancel := context.WithCancel(context.Background())
 
-	var (
-		db     *sql.DB
-		driver *driver.Generic
-		err    error
-	)
-
-	switch parts[0] {
-	case "dqlite":
-		if db, err = dqlite.Open(cfg.Dir); err != nil {
-			return nil, err
-		}
-		driver = dqlite.NewDQLite()
-	case "sqlite":
-		if db, err = sqlite.Open(cfg.Dir); err != nil {
-			return nil, err
-		}
-		driver = sqlite.NewSQLite()
-	case "mysql":
-		if db, err = mysql.Open(parts[1]); err != nil {
-			return nil, err
-		}
-		driver = mysql.NewMySQL()
-	case "postgres":
-		if db, err = pgsql.Open(parts[1]); err != nil {
-			return nil, err
-		}
-		driver = pgsql.NewPGSQL()
-	}
-
-	if err := driver.Start(context.TODO(), db); err != nil {
-		db.Close()
+	if err := driver.Start(ctx); err != nil {
 		return nil, err
 	}
 
 	kv := &kv{
 		d: driver,
 	}
-	connections[key] = kv
+	connection = kv
+	connectionClose = func() {
+		cancel()
+		driver.WaitStopped()
+	}
 
 	return kv, nil
 }
@@ -280,4 +241,19 @@ func (k *kv) Txn(ctx context.Context) Txn {
 		kv:  k,
 		ctx: ctx,
 	}
+}
+
+// Shutdown the dqlite engine, if it was started.
+func Shutdown() {
+	connectionLock.Lock()
+	defer connectionLock.Unlock()
+
+	kv := connection
+	if kv == nil {
+		return
+	}
+
+	connectionClose()
+	connection = nil
+	connectionClose = nil
 }
