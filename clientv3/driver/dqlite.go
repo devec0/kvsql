@@ -50,6 +50,12 @@ INSERT INTO key_value(` + fieldList + `)
 			)`,
 		`create index if not exists name_idx on key_value (name)`,
 		`create index if not exists revision_idx on key_value (revision)`,
+		`create table if not exists servers
+                        (
+                                id INTEGER PRIMARY KEY NOT NULL,
+                                address TEXT NOT NULL,
+                                UNIQUE (address)
+                        )`,
 	}
 )
 
