@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io/ioutil"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	dqlite "github.com/CanonicalLtd/go-dqlite"
 	"github.com/ghodss/yaml"
@@ -103,6 +105,18 @@ func NewDQLite(dir string) (*Generic, error) {
 	store, err := dqlite.DefaultServerStore(filepath.Join(dir, "servers.sql"))
 	if err != nil {
 		return nil, err
+	}
+
+	// Possibly join a cluster
+	if _, err := os.Stat(filepath.Join(dir, "join")); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Join(ctx, store, nil); err != nil {
+			return nil, fmt.Errorf("can't join: %v", err)
+		}
+		if err := os.Remove(filepath.Join(dir, "join")); err != nil {
+			return nil, err
+		}
 	}
 
 	driver, err := dqlite.NewDriver(store)
