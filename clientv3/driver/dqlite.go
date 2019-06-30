@@ -34,6 +34,10 @@ WHERE kv.name like ? %RES% ORDER BY kv.name ASC limit ?
 INSERT INTO key_value(` + fieldList + `)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
+	addServerSQL = `
+INSERT INTO servers(id, address)
+   VALUES(?, ?)`
+
 	schema = []string{
 		`create table if not exists key_value
 			(
@@ -113,7 +117,17 @@ func NewDQLite(dir string) (*Generic, error) {
 		return nil, err
 	}
 
-	// Possibly join a cluster
+	shouldInsertServer := false
+
+	// Possibly insert the first server.
+	if _, err := os.Stat(filepath.Join(dir, "bootstrap")); err == nil {
+		if err := os.Remove(filepath.Join(dir, "bootstrap")); err != nil {
+			return nil, err
+		}
+		shouldInsertServer = true
+	}
+
+	// Possibly join a cluster.
 	if _, err := os.Stat(filepath.Join(dir, "join")); err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -123,6 +137,7 @@ func NewDQLite(dir string) (*Generic, error) {
 		if err := os.Remove(filepath.Join(dir, "join")); err != nil {
 			return nil, err
 		}
+		shouldInsertServer = true
 	}
 
 	driver, err := dqlite.NewDriver(store)
@@ -143,6 +158,13 @@ func NewDQLite(dir string) (*Generic, error) {
 		_, err := db.Exec(stmt)
 		if err != nil {
 			return nil, err
+		}
+	}
+
+	// Possibly insert the first server.
+	if shouldInsertServer {
+		if _, err := db.Exec(addServerSQL, info.ID, info.Address); err != nil {
+			return nil, fmt.Errorf("can't insert server: %v", err)
 		}
 	}
 

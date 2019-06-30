@@ -39,6 +39,10 @@ type Generic struct {
 	stopped     chan struct{}
 }
 
+func (g *Generic) DB() *sql.DB {
+	return g.db
+}
+
 func (g *Generic) Start(ctx context.Context) error {
 	g.changes = make(chan *KeyValue, 1024)
 	g.stopped = make(chan struct{})

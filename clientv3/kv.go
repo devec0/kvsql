@@ -16,6 +16,7 @@ package clientv3
 
 import (
 	"bytes"
+	"database/sql"
 	"sync"
 
 	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
@@ -68,7 +69,7 @@ type KV interface {
 
 type kv struct {
 	l locker.Locker
-	d driver.Driver
+	d *driver.Generic
 }
 
 func newKV(cfg Config) (*kv, error) {
@@ -241,6 +242,18 @@ func (k *kv) Txn(ctx context.Context) Txn {
 		kv:  k,
 		ctx: ctx,
 	}
+}
+
+func DB() *sql.DB {
+	connectionLock.Lock()
+	defer connectionLock.Unlock()
+
+	kv := connection
+	if kv == nil {
+		return nil
+	}
+
+	return kv.d.DB()
 }
 
 // Shutdown the dqlite engine, if it was started.
