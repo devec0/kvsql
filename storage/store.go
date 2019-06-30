@@ -38,7 +38,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
-	"k8s.io/apiserver/pkg/storage/etcd"
+	storageetcd3 "k8s.io/apiserver/pkg/storage/etcd3"
 	"k8s.io/apiserver/pkg/storage/value"
 	utiltrace "k8s.io/utils/trace"
 )
@@ -87,7 +87,7 @@ func New(c *clientv3.Client, codec runtime.Codec, prefix string, transformer val
 }
 
 func newStore(c *clientv3.Client, quorumRead, pagingEnabled bool, codec runtime.Codec, prefix string, transformer value.Transformer) *store {
-	versioner := etcd.APIObjectVersioner{}
+	versioner := storageetcd3.APIObjectVersioner{}
 	result := &store{
 		client:        c,
 		codec:         codec,
