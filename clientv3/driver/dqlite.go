@@ -170,7 +170,9 @@ func NewDQLite(dir string) (*Generic, error) {
 
 	g := newGeneric()
 	g.db = db
+	g.info = info
 	g.server = server
+	g.store = store
 
 	return g, nil
 }

@@ -20,7 +20,9 @@ type Generic struct {
 	revision int64
 
 	db     *sql.DB
+	info   dqlite.ServerInfo
 	server *dqlite.Server
+	store  dqlite.ServerStore
 
 	CleanupSQL      string
 	GetSQL          string
@@ -61,6 +63,8 @@ func (g *Generic) Start(ctx context.Context) error {
 	go func() {
 		for {
 			select {
+			case <-time.After(5 * time.Second):
+				g.updateServerStore()
 			case <-ctx.Done():
 				g.db.Close()
 				g.server.Close()
@@ -81,6 +85,18 @@ func (g *Generic) Start(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+func (g *Generic) updateServerStore() {
+	servers, err := QueryServers(g.db)
+	if err != nil {
+		return
+	}
+	infos := make([]dqlite.ServerInfo, len(servers))
+	for i, server := range servers {
+		infos[i].Address = server.Address
+	}
+	g.store.Set(context.Background(), infos)
 }
 
 func (g *Generic) WaitStopped() {
@@ -304,4 +320,31 @@ func scan(s scanner, out *KeyValue) error {
 		&out.TTL,
 		&out.Version,
 		&out.Del)
+}
+
+type Server struct {
+	ID      int64
+	Address string
+}
+
+func QueryServers(db *sql.DB) ([]Server, error) {
+	servers := []Server{}
+	rows, err := db.Query("SELECT id, address FROM servers")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		server := Server{}
+		if err := rows.Scan(&server.ID, &server.Address); err != nil {
+			return nil, err
+		}
+		servers = append(servers, server)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return servers, nil
 }
