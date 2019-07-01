@@ -1,9 +1,12 @@
 package driver
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -302,8 +305,35 @@ func (g *Generic) mod(ctx context.Context, delete bool, key string, value []byte
 		return nil, err
 	}
 
+	info := g.server.Leader()
+	if info == nil {
+		return nil, fmt.Errorf("no leader found")
+	}
+
+	if err := postWatchChange(info.Address, result); err != nil {
+		return nil, err
+	}
+
 	g.changes <- result
 	return result, nil
+}
+
+func postWatchChange(addr string, kv *KeyValue) error {
+	url := fmt.Sprintf("http://%s/watch", addr)
+
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(*kv)
+
+	response, err := http.Post(url, "application/json; charset=utf-8", b)
+	if err != nil {
+		return errors.Wrap(err, "Sending HTTP request failed")
+	}
+
+	if response.StatusCode != 200 {
+		return fmt.Errorf("HTTP request failed with: %s", response.Status)
+	}
+
+	return nil
 }
 
 type scanner func(dest ...interface{}) error

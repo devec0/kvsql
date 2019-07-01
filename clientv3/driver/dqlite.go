@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -111,6 +113,7 @@ func NewDQLite(dir string) (*Generic, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/dqlite", makeDqliteHandler(conns))
+	mux.HandleFunc("/watch", makeWatchHandler())
 
 	web := &http.Server{Handler: mux}
 	go web.Serve(listener)
@@ -146,7 +149,7 @@ func NewDQLite(dir string) (*Generic, error) {
 	if _, err := os.Stat(filepath.Join(dir, "join")); err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := server.Join(ctx, store, nil); err != nil {
+		if err := server.Join(ctx, store, dial); err != nil {
 			return nil, fmt.Errorf("can't join: %v", err)
 		}
 		if err := os.Remove(filepath.Join(dir, "join")); err != nil {
@@ -241,6 +244,28 @@ func makeDqliteHandler(conns chan net.Conn) http.HandlerFunc {
 	}
 }
 
+func readToJSON(r io.Reader, obj interface{}) error {
+	buf, err := ioutil.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(buf, obj)
+}
+
+func makeWatchHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Handle change notifications.
+		if r.Method == "POST" {
+			kv := KeyValue{}
+			if err := readToJSON(r.Body, &kv); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+}
+
 func makeDqliteDialFunc() dqlite.DialFunc {
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		request := &http.Request{
@@ -251,7 +276,7 @@ func makeDqliteDialFunc() dqlite.DialFunc {
 			Header:     make(http.Header),
 			Host:       addr,
 		}
-		path := fmt.Sprintf("https://%s/dqlite", addr)
+		path := fmt.Sprintf("http://%s/dqlite", addr)
 
 		var err error
 		request.URL, err = url.Parse(path)
