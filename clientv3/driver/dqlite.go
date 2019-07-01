@@ -1,11 +1,14 @@
 package driver
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
 	"io/ioutil"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +16,7 @@ import (
 
 	dqlite "github.com/CanonicalLtd/go-dqlite"
 	"github.com/ghodss/yaml"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -99,15 +103,26 @@ func NewDQLite(dir string) (*Generic, error) {
 		return nil, err
 	}
 
-	server, err := dqlite.NewServer(info, dir)
-	if err != nil {
-		return nil, err
-	}
 	listener, err := net.Listen("tcp", info.Address)
 	if err != nil {
 		return nil, err
 	}
-	err = server.Start(listener)
+	conns := make(chan net.Conn)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/dqlite", makeDqliteHandler(conns))
+
+	web := &http.Server{Handler: mux}
+	go web.Serve(listener)
+
+	dial := makeDqliteDialFunc()
+	server, err := dqlite.NewServer(info, dir, dqlite.WithServerDialFunc(dial))
+	if err != nil {
+		return nil, err
+	}
+
+	proxy := &proxyListener{conns: conns, addr: listener.Addr()}
+	err = server.Start(proxy)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +155,7 @@ func NewDQLite(dir string) (*Generic, error) {
 		shouldInsertServer = true
 	}
 
-	driver, err := dqlite.NewDriver(store)
+	driver, err := dqlite.NewDriver(store, dqlite.WithDialFunc(dial))
 	if err != nil {
 		return nil, err
 	}
@@ -175,4 +190,102 @@ func NewDQLite(dir string) (*Generic, error) {
 	g.store = store
 
 	return g, nil
+}
+
+type proxyListener struct {
+	conns chan net.Conn
+	addr  net.Addr
+}
+
+func (p *proxyListener) Accept() (net.Conn, error) {
+	return <-p.conns, nil
+}
+
+func (p *proxyListener) Close() error {
+	return nil
+}
+
+func (p *proxyListener) Addr() net.Addr {
+	return p.addr
+}
+
+func makeDqliteHandler(conns chan net.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Upgrade") != "dqlite" {
+			http.Error(w, "Missing or invalid upgrade header", http.StatusBadRequest)
+			return
+		}
+
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "Webserver doesn't support hijacking", http.StatusInternalServerError)
+			return
+		}
+
+		conn, _, err := hijacker.Hijack()
+		if err != nil {
+			message := errors.Wrap(err, "Failed to hijack connection").Error()
+			http.Error(w, message, http.StatusInternalServerError)
+			return
+		}
+
+		// Write the status line and upgrade header by hand since w.WriteHeader()
+		// would fail after Hijack()
+		data := []byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: dqlite\r\n\r\n")
+		if n, err := conn.Write(data); err != nil || n != len(data) {
+			conn.Close()
+			return
+		}
+
+		conns <- conn
+	}
+}
+
+func makeDqliteDialFunc() dqlite.DialFunc {
+	return func(ctx context.Context, addr string) (net.Conn, error) {
+		request := &http.Request{
+			Method:     "POST",
+			Proto:      "HTTP/1.1",
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Header:     make(http.Header),
+			Host:       addr,
+		}
+		path := fmt.Sprintf("https://%s/dqlite", addr)
+
+		var err error
+		request.URL, err = url.Parse(path)
+		if err != nil {
+			return nil, err
+		}
+
+		request.Header.Set("Upgrade", "dqlite")
+		request = request.WithContext(ctx)
+
+		deadline, _ := ctx.Deadline()
+		dialer := &net.Dialer{Timeout: time.Until(deadline)}
+
+		conn, err := dialer.Dial("tcp", addr)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to connect to HTTP endpoint")
+		}
+
+		err = request.Write(conn)
+		if err != nil {
+			return nil, errors.Wrap(err, "Sending HTTP request failed")
+		}
+
+		response, err := http.ReadResponse(bufio.NewReader(conn), request)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to read response")
+		}
+		if response.StatusCode != http.StatusSwitchingProtocols {
+			return nil, fmt.Errorf("Dialing failed: expected status code 101 got %d", response.StatusCode)
+		}
+		if response.Header.Get("Upgrade") != "dqlite" {
+			return nil, fmt.Errorf("Missing or unexpected Upgrade header in response")
+		}
+
+		return conn, nil
+	}
 }
