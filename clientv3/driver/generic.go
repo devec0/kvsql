@@ -314,7 +314,6 @@ func (g *Generic) mod(ctx context.Context, delete bool, key string, value []byte
 		return nil, err
 	}
 
-	g.changes <- result
 	return result, nil
 }
 

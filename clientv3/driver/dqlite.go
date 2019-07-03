@@ -111,9 +111,11 @@ func NewDQLite(dir string) (*Generic, error) {
 	}
 	conns := make(chan net.Conn)
 
+	g := newGeneric()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/dqlite", makeDqliteHandler(conns))
-	mux.HandleFunc("/watch", makeWatchHandler())
+	mux.HandleFunc("/watch", makeWatchHandler(g))
 
 	web := &http.Server{Handler: mux}
 	go web.Serve(listener)
@@ -186,7 +188,6 @@ func NewDQLite(dir string) (*Generic, error) {
 		}
 	}
 
-	g := newGeneric()
 	g.db = db
 	g.info = info
 	g.server = server
@@ -253,7 +254,7 @@ func readToJSON(r io.Reader, obj interface{}) error {
 	return json.Unmarshal(buf, obj)
 }
 
-func makeWatchHandler() http.HandlerFunc {
+func makeWatchHandler(g *Generic) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Handle change notifications.
 		if r.Method == "POST" {
@@ -262,6 +263,7 @@ func makeWatchHandler() http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			g.changes <- &kv
 		}
 	}
 }
