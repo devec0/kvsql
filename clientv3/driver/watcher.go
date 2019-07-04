@@ -1,7 +1,13 @@
 package driver
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -46,13 +52,6 @@ func (g *Generic) globalWatcher() (chan map[string]interface{}, error) {
 func (g *Generic) Watch(ctx context.Context, key string, revision int64) <-chan Event {
 	ctx, parentCancel := context.WithCancel(ctx)
 
-	prefix := strings.HasSuffix(key, "%")
-
-	events, err := g.broadcaster.Subscribe(ctx, g.globalWatcher)
-	if err != nil {
-		panic(err)
-	}
-
 	watchChan := make(chan Event)
 	go func() (returnErr error) {
 		defer func() {
@@ -60,24 +59,71 @@ func (g *Generic) Watch(ctx context.Context, key string, revision int64) <-chan 
 			parentCancel()
 		}()
 
-		start(watchChan)
+		info := g.server.Leader()
+		if info == nil {
+			returnErr = fmt.Errorf("no leader found")
+			return
+		}
+		addr := info.Address
 
-		if revision > 0 {
-			keys, err := g.replayEvents(ctx, key, revision)
-			if err != nil {
-				return err
-			}
+		request := &http.Request{
+			Method:     "GET",
+			Proto:      "HTTP/1.1",
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Header:     make(http.Header),
+			Host:       addr,
+		}
+		path := fmt.Sprintf("http://%s/watch", addr)
 
-			for _, k := range keys {
-				watchChan <- Event{KV: k}
-			}
+		request.URL, returnErr = url.Parse(path)
+		if returnErr != nil {
+			return
 		}
 
-		for e := range events {
-			k, ok := e["data"].(*KeyValue)
-			if ok && matchesKey(prefix, key, k) {
-				watchChan <- Event{KV: k}
+		request.Header.Set("Upgrade", "watch")
+		request.Header.Set("X-Watch-Key", key)
+		request.Header.Set("X-Watch-Rev", fmt.Sprintf("%d", revision))
+		request = request.WithContext(ctx)
+
+		dialer := &net.Dialer{}
+		conn, err := dialer.Dial("tcp", addr)
+		if err != nil {
+			returnErr = err
+			return
+		}
+		defer conn.Close()
+
+		if returnErr = request.Write(conn); returnErr != nil {
+			return
+		}
+
+		response, err := http.ReadResponse(bufio.NewReader(conn), request)
+		if err != nil {
+			returnErr = err
+			return
+		}
+		if response.StatusCode != http.StatusSwitchingProtocols {
+			returnErr = fmt.Errorf("Dialing failed: expected status code 101 got %d", response.StatusCode)
+			return
+		}
+		if response.Header.Get("Upgrade") != "watch" {
+			returnErr = fmt.Errorf("Missing or unexpected Upgrade header in response")
+			return
+		}
+
+		reader := bufio.NewReader(conn)
+		for {
+			b, err := reader.ReadBytes('\n')
+			if err != nil {
+				returnErr = err
+				return
 			}
+			e := Event{}
+			if returnErr = json.Unmarshal(b, &e); returnErr != nil {
+				return
+			}
+			watchChan <- e
 		}
 
 		return nil
