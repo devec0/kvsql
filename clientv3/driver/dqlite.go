@@ -2,6 +2,7 @@ package driver
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -256,7 +258,7 @@ func readToJSON(r io.Reader, obj interface{}) error {
 
 func makeWatchHandler(g *Generic) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Handle change notifications.
+		// Receive change notifications.
 		if r.Method == "POST" {
 			kv := KeyValue{}
 			if err := readToJSON(r.Body, &kv); err != nil {
@@ -265,7 +267,111 @@ func makeWatchHandler(g *Generic) http.HandlerFunc {
 			}
 			g.changes <- &kv
 		}
+
+		// Broadcast change notifications.
+		if r.Method == "GET" {
+			if r.Header.Get("Upgrade") != "watch" {
+				http.Error(w, "Missing or invalid upgrade header", http.StatusBadRequest)
+				return
+			}
+
+			key := r.Header.Get("X-Watch-Key")
+			if key == "" {
+				http.Error(w, "Missing key header", http.StatusBadRequest)
+				return
+			}
+
+			rev := r.Header.Get("X-Watch-Rev")
+			if rev == "" {
+				http.Error(w, "Missing rev header", http.StatusBadRequest)
+				return
+			}
+			revision, err := strconv.Atoi(rev)
+			if err != nil {
+				http.Error(w, "Bad revision", http.StatusBadRequest)
+				return
+			}
+
+			hijacker, ok := w.(http.Hijacker)
+			if !ok {
+				http.Error(w, "Webserver doesn't support hijacking", http.StatusInternalServerError)
+				return
+			}
+
+			conn, _, err := hijacker.Hijack()
+			if err != nil {
+				message := errors.Wrap(err, "Failed to hijack connection").Error()
+				http.Error(w, message, http.StatusInternalServerError)
+				return
+			}
+
+			// Write the status line and upgrade header by hand since w.WriteHeader()
+			// would fail after Hijack()
+			data := []byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: watch\r\n\r\n")
+			if n, err := conn.Write(data); err != nil || n != len(data) {
+				conn.Close()
+				return
+			}
+
+			prefix := strings.HasSuffix(key, "%")
+
+			ctx, parentCancel := context.WithCancel(context.Background())
+
+			defer func() {
+				conn.Close()
+				parentCancel()
+			}()
+
+			events, err := g.broadcaster.Subscribe(ctx, g.globalWatcher)
+			if err != nil {
+				panic(err)
+			}
+
+			writer := bufio.NewWriter(conn)
+
+			if err := sendEvent(writer, &Event{Start: true}); err != nil {
+				return
+			}
+
+			if revision > 0 {
+				keys, err := g.replayEvents(ctx, key, int64(revision))
+				if err != nil {
+					return
+				}
+
+				for _, k := range keys {
+					if err := sendEvent(writer, &Event{KV: k}); err != nil {
+						return
+					}
+				}
+			}
+
+			for e := range events {
+				k, ok := e["data"].(*KeyValue)
+				if ok && matchesKey(prefix, key, k) {
+					if err := sendEvent(writer, &Event{KV: k}); err != nil {
+						return
+					}
+				}
+			}
+
+		}
 	}
+}
+
+func sendEvent(writer *bufio.Writer, e *Event) error {
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(e)
+
+	if _, err := writer.Write(b.Bytes()); err != nil {
+		return err
+	}
+
+	if err := writer.Flush(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func makeDqliteDialFunc() dqlite.DialFunc {
