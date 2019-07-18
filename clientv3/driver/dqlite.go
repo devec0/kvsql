@@ -21,6 +21,7 @@ import (
 	dqlite "github.com/CanonicalLtd/go-dqlite"
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -87,6 +88,12 @@ func newGeneric() *Generic {
 	}
 }
 
+func dqliteWatch(old int, new int) {
+	if new == dqlite.Leader {
+		logrus.Infof("Acquired dqlite leadership")
+	}
+}
+
 func NewDQLite(dir string) (*Generic, error) {
 	infoPath := filepath.Join(dir, "info.yaml")
 	if _, err := os.Stat(infoPath); err != nil {
@@ -123,7 +130,7 @@ func NewDQLite(dir string) (*Generic, error) {
 	go web.Serve(listener)
 
 	dial := makeDqliteDialFunc()
-	server, err := dqlite.NewServer(info, dir, dqlite.WithServerDialFunc(dial))
+	server, err := dqlite.NewServer(info, dir, dqlite.WithServerDialFunc(dial), dqlite.WithServerWatchFunc(dqliteWatch))
 	if err != nil {
 		return nil, err
 	}
