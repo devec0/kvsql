@@ -242,13 +242,37 @@ func (g *Generic) Update(ctx context.Context, key string, value []byte, revision
 func (g *Generic) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	trace := utiltrace.New(fmt.Sprintf("SQL DB ExecContext query: %s keys: %v", query, args))
 	defer trace.LogIfLong(500 * time.Millisecond)
-	return g.db.ExecContext(ctx, query, args...)
+
+	var err error
+	var result sql.Result
+	f := func() error {
+		result, err = g.db.ExecContext(ctx, query, args...)
+		return err
+	}
+
+	if err := retry(f); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func (g *Generic) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	trace := utiltrace.New(fmt.Sprintf("SQL DB QueryContext query: %s keys: %v", query, args))
 	defer trace.LogIfLong(500 * time.Millisecond)
-	return g.db.QueryContext(ctx, query, args...)
+
+	var err error
+	var rows *sql.Rows
+	f := func() error {
+		rows, err = g.db.QueryContext(ctx, query, args...)
+		return err
+	}
+
+	if err := retry(f); err != nil {
+		return nil, err
+	}
+
+	return rows, nil
 }
 
 func (g *Generic) mod(ctx context.Context, delete bool, key string, value []byte, revision int64, ttl int64) (*KeyValue, error) {

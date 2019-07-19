@@ -192,7 +192,11 @@ func NewDQLite(dir string) (*Generic, error) {
 
 	// Possibly insert the first server.
 	if shouldInsertServer {
-		if _, err := db.Exec(addServerSQL, info.ID, info.Address); err != nil {
+		f := func() error {
+			_, err := db.Exec(addServerSQL, info.ID, info.Address)
+			return err
+		}
+		if err := retry(f); err != nil {
 			return nil, fmt.Errorf("can't insert server: %v", err)
 		}
 	}
