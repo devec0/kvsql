@@ -8,20 +8,15 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	dqlite "github.com/CanonicalLtd/go-dqlite"
 	"github.com/freeekanayaka/kvsql/pkg/broadcast"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	utiltrace "k8s.io/utils/trace"
 )
 
 type Generic struct {
-	// revision must be first to ensure that this is properly aligned for atomic.LoadInt64
-	revision int64
-
 	db     *sql.DB
 	info   dqlite.ServerInfo
 	server *dqlite.Server
@@ -48,19 +43,50 @@ func (g *Generic) DB() *sql.DB {
 	return g.db
 }
 
+func (g *Generic) currentRevision(ctx context.Context) (int64, error) {
+	row := g.db.QueryRowContext(ctx, g.GetRevisionSQL)
+	rev := sql.NullInt64{}
+	if err := row.Scan(&rev); err != nil && err != sql.ErrNoRows {
+		return 0, errors.Wrap(err, "Failed to get initial revision")
+	}
+	if rev.Int64 == 0 {
+		var err error
+		rev.Int64, err = g.newRevision(ctx)
+		if err != nil {
+			return 0, errors.Wrap(err, "Failed to create initial revision")
+		}
+	}
+	return rev.Int64, nil
+}
+
+func (g *Generic) newRevision(ctx context.Context) (int64, error) {
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM revision"); err != nil {
+		return 0, err
+	}
+	result, err := tx.ExecContext(ctx, "INSERT INTO revision(t) VALUES(NULL)")
+	if err != nil {
+		return 0, err
+	}
+	revision, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return revision, nil
+}
+
 func (g *Generic) Start(ctx context.Context) error {
 	g.changes = make(chan *KeyValue, 1024)
 	g.stopped = make(chan struct{})
 
-	row := g.db.QueryRowContext(ctx, g.GetRevisionSQL)
-	rev := sql.NullInt64{}
-	if err := row.Scan(&rev); err != nil {
+	if _, err := g.currentRevision(ctx); err != nil {
 		return errors.Wrap(err, "Failed to initialize revision")
-	}
-	if rev.Int64 == 0 {
-		g.revision = 1
-	} else {
-		g.revision = rev.Int64
 	}
 
 	go func() {
@@ -180,7 +206,10 @@ func (g *Generic) List(ctx context.Context, revision, limit int64, rangeKey, sta
 		limit = limit + 1
 	}
 
-	listRevision := atomic.LoadInt64(&g.revision)
+	listRevision, err := g.currentRevision(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
 	if !strings.HasSuffix(rangeKey, "%") && revision <= 0 {
 		rows, err = g.QueryContext(ctx, g.GetSQL, rangeKey, 1)
 	} else if revision <= 0 {
@@ -240,8 +269,8 @@ func (g *Generic) Update(ctx context.Context, key string, value []byte, revision
 }
 
 func (g *Generic) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	trace := utiltrace.New(fmt.Sprintf("SQL DB ExecContext query: %s keys: %v", query, args))
-	defer trace.LogIfLong(500 * time.Millisecond)
+	//trace := utiltrace.New(fmt.Sprintf("SQL DB ExecContext query: %s keys: %v", query, args))
+	//defer trace.LogIfLong(500 * time.Millisecond)
 
 	var err error
 	var result sql.Result
@@ -258,8 +287,8 @@ func (g *Generic) ExecContext(ctx context.Context, query string, args ...interfa
 }
 
 func (g *Generic) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	trace := utiltrace.New(fmt.Sprintf("SQL DB QueryContext query: %s keys: %v", query, args))
-	defer trace.LogIfLong(500 * time.Millisecond)
+	//trace := utiltrace.New(fmt.Sprintf("SQL DB QueryContext query: %s keys: %v", query, args))
+	//defer trace.LogIfLong(500 * time.Millisecond)
 
 	var err error
 	var rows *sql.Rows
@@ -293,7 +322,10 @@ func (g *Generic) mod(ctx context.Context, delete bool, key string, value []byte
 		ttl = int64(time.Now().Unix()) + ttl
 	}
 
-	newRevision := atomic.AddInt64(&g.revision, 1)
+	newRevision, err := g.newRevision(ctx)
+	if err != nil {
+		return nil, err
+	}
 	result := &KeyValue{
 		Key:            key,
 		Value:          value,

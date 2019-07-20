@@ -69,6 +69,11 @@ INSERT INTO servers(id, address)
                                 address TEXT NOT NULL,
                                 UNIQUE (address)
                         )`,
+		`create table if not exists revision
+                        (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                t TEXT
+                        )`,
 	}
 )
 
@@ -82,7 +87,7 @@ func newGeneric() *Generic {
 			"%RES%", "and kv.name > ? ", -1),
 		InsertSQL:      insertSQL,
 		ReplaySQL:      "SELECT id, " + fieldList + " FROM key_value WHERE name like ? and revision >= ? ORDER BY revision ASC",
-		GetRevisionSQL: "SELECT MAX(revision) FROM key_value",
+		GetRevisionSQL: "SELECT id FROM revision",
 		ToDeleteSQL:    "SELECT count(*) c, name, max(revision) FROM key_value GROUP BY name HAVING c > 1 or (c = 1 and del = 1)",
 		DeleteOldSQL:   "DELETE FROM key_value WHERE name = ? AND (revision < ? OR (revision = ? AND del = 1))",
 	}
