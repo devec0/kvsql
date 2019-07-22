@@ -174,7 +174,11 @@ func NewDQLite(dir string) (*Generic, error) {
 		shouldInsertServer = true
 	}
 
-	driver, err := dqlite.NewDriver(store, dqlite.WithDialFunc(dial))
+	driver, err := dqlite.NewDriver(
+		store, dqlite.WithDialFunc(dial),
+		dqlite.WithConnectionTimeout(10*time.Second),
+		dqlite.WithContextTimeout(10*time.Second),
+	)
 	if err != nil {
 		return nil, err
 	}
