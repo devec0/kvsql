@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	dqlite "github.com/CanonicalLtd/go-dqlite"
+	dqlite "github.com/canonical/go-dqlite"
+	"github.com/canonical/go-dqlite/client"
 	"github.com/freeekanayaka/kvsql/pkg/broadcast"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -18,9 +19,9 @@ import (
 
 type Generic struct {
 	db     *sql.DB
-	info   dqlite.ServerInfo
-	server *dqlite.Server
-	store  dqlite.ServerStore
+	info   client.NodeInfo
+	server *dqlite.Node
+	store  client.NodeStore
 
 	CleanupSQL      string
 	GetSQL          string
@@ -121,7 +122,7 @@ func (g *Generic) updateServerStore() {
 	if err != nil {
 		return
 	}
-	infos := make([]dqlite.ServerInfo, len(servers))
+	infos := make([]client.NodeInfo, len(servers))
 	for i, server := range servers {
 		infos[i].Address = server.Address
 	}
@@ -361,7 +362,16 @@ func (g *Generic) mod(ctx context.Context, delete bool, key string, value []byte
 		return nil, err
 	}
 
-	info := g.server.Leader()
+	client, err := client.New(ctx, g.server.BindAddress())
+	if err != nil {
+		return nil, errors.Wrap(err, "create dqlite client")
+	}
+	defer client.Close()
+
+	info, err := client.Leader(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "get leader")
+	}
 	if info == nil {
 		return nil, fmt.Errorf("no leader found")
 	}

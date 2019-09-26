@@ -18,10 +18,11 @@ import (
 	"strings"
 	"time"
 
-	dqlite "github.com/CanonicalLtd/go-dqlite"
+	dqlite "github.com/canonical/go-dqlite"
+	"github.com/canonical/go-dqlite/client"
+	"github.com/canonical/go-dqlite/driver"
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -93,12 +94,6 @@ func newGeneric() *Generic {
 	}
 }
 
-func dqliteWatch(old int, new int) {
-	if new == dqlite.Leader {
-		logrus.Infof("Acquired dqlite leadership")
-	}
-}
-
 func NewDQLite(dir string) (*Generic, error) {
 	infoPath := filepath.Join(dir, "info.yaml")
 	if _, err := os.Stat(infoPath); err != nil {
@@ -109,7 +104,7 @@ func NewDQLite(dir string) (*Generic, error) {
 
 	}
 
-	info := dqlite.ServerInfo{}
+	info := client.NodeInfo{}
 	data, err := ioutil.ReadFile(infoPath)
 	if err != nil {
 		return nil, err
@@ -135,18 +130,21 @@ func NewDQLite(dir string) (*Generic, error) {
 	go web.Serve(listener)
 
 	dial := makeDqliteDialFunc()
-	server, err := dqlite.NewServer(info, dir, dqlite.WithServerDialFunc(dial), dqlite.WithServerWatchFunc(dqliteWatch))
+	server, err := dqlite.New(
+		info.ID, info.Address, dir, dqlite.WithBindAddress("@"), dqlite.WithDialFunc(dial))
 	if err != nil {
 		return nil, err
 	}
 
-	proxy := &proxyListener{conns: conns, addr: listener.Addr()}
-	err = server.Start(proxy)
+	proxy := &proxyListener{conns: conns, addr: server.BindAddress()}
+	go proxy.Start()
+
+	err = server.Start()
 	if err != nil {
 		return nil, err
 	}
 
-	store, err := dqlite.DefaultServerStore(filepath.Join(dir, "servers.sql"))
+	store, err := client.DefaultNodeStore(filepath.Join(dir, "servers.sql"))
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +163,12 @@ func NewDQLite(dir string) (*Generic, error) {
 	if _, err := os.Stat(filepath.Join(dir, "join")); err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := server.Join(ctx, store, dial); err != nil {
+		client, err := client.FindLeader(ctx, store, client.WithDialFunc(dial))
+		if err != nil {
+			return nil, fmt.Errorf("can't find leader: %v", err)
+		}
+		defer client.Close()
+		if err := client.Add(ctx, info); err != nil {
 			return nil, fmt.Errorf("can't join: %v", err)
 		}
 		if err := os.Remove(filepath.Join(dir, "join")); err != nil {
@@ -174,10 +177,10 @@ func NewDQLite(dir string) (*Generic, error) {
 		shouldInsertServer = true
 	}
 
-	driver, err := dqlite.NewDriver(
-		store, dqlite.WithDialFunc(dial),
-		dqlite.WithConnectionTimeout(10*time.Second),
-		dqlite.WithContextTimeout(10*time.Second),
+	driver, err := driver.New(
+		store, driver.WithDialFunc(dial),
+		driver.WithConnectionTimeout(10*time.Second),
+		driver.WithContextTimeout(10*time.Second),
 	)
 	if err != nil {
 		return nil, err
@@ -220,19 +223,37 @@ func NewDQLite(dir string) (*Generic, error) {
 
 type proxyListener struct {
 	conns chan net.Conn
-	addr  net.Addr
+	addr  string
 }
 
-func (p *proxyListener) Accept() (net.Conn, error) {
-	return <-p.conns, nil
-}
+func (p *proxyListener) Start() {
+	for {
+		src, ok := <-p.conns
+		if !ok {
+			break
+		}
+		dst, err := net.Dial("unix", p.addr)
+		if err != nil {
+			continue
+		}
+		go func() {
+			_, err := io.Copy(dst, src)
+			if err != nil {
+				fmt.Printf("Dqlite server proxy TLS -> Unix: %v\n", err)
+			}
+			src.Close()
+			dst.Close()
+		}()
 
-func (p *proxyListener) Close() error {
-	return nil
-}
-
-func (p *proxyListener) Addr() net.Addr {
-	return p.addr
+		go func() {
+			_, err := io.Copy(src, dst)
+			if err != nil {
+				fmt.Printf("Dqlite server proxy Unix -> TLS: %v\n", err)
+			}
+			src.Close()
+			dst.Close()
+		}()
+	}
 }
 
 func makeDqliteHandler(conns chan net.Conn) http.HandlerFunc {
@@ -394,7 +415,7 @@ func sendEvent(writer *bufio.Writer, e *Event) error {
 	return nil
 }
 
-func makeDqliteDialFunc() dqlite.DialFunc {
+func makeDqliteDialFunc() client.DialFunc {
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		request := &http.Request{
 			Method:     "POST",

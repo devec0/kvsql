@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/canonical/go-dqlite/client"
+	"github.com/pkg/errors"
 )
 
 type Event struct {
@@ -58,8 +61,19 @@ func (g *Generic) Watch(ctx context.Context, key string, revision int64) <-chan 
 			sendErrorAndClose(watchChan, returnErr)
 			parentCancel()
 		}()
+		ctx := context.Background()
+		client, err := client.New(ctx, g.server.BindAddress())
+		if err != nil {
+			returnErr = errors.Wrap(err, "create dqlite client")
+			return
+		}
 
-		info := g.server.Leader()
+		info, err := client.Leader(ctx)
+		if err != nil {
+			returnErr = errors.Wrap(err, "get leader")
+			return
+		}
+
 		if info == nil {
 			returnErr = fmt.Errorf("no leader found")
 			return
