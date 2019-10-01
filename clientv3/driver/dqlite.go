@@ -26,8 +26,7 @@ import (
 )
 
 var (
-	fieldList = "name, value, old_value, old_revision, create_revision, revision, ttl, version, del"
-	baseList  = `
+	baseList = `
 SELECT kv.id, kv.name, kv.value, kv.old_value, kv.old_revision, kv.create_revision, kv.revision, kv.ttl, kv.version, kv.del
 FROM key_value kv
   INNER JOIN
@@ -80,7 +79,6 @@ INSERT INTO servers(id, address)
 
 func newGeneric() *Driver {
 	return &Driver{
-		GetSQL:          "SELECT id, " + fieldList + " FROM key_value WHERE name = ? ORDER BY revision DESC limit ?",
 		ListSQL:         strings.Replace(strings.Replace(baseList, "%REV%", "", -1), "%RES%", "", -1),
 		ListRevisionSQL: strings.Replace(strings.Replace(baseList, "%REV%", "WHERE kvi.revision >= ?", -1), "%RES%", "", -1),
 		ListResumeSQL: strings.Replace(strings.Replace(baseList, "%REV%", "WHERE kvi.revision <= ?", -1),

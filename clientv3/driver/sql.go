@@ -6,7 +6,10 @@ import (
 )
 
 const (
+	fieldList = "name, value, old_value, old_revision, create_revision, revision, ttl, version, del"
+
 	cleanupSQL = "DELETE FROM key_value WHERE ttl > 0 AND ttl < ?"
+	getSQL     = "SELECT id, " + fieldList + " FROM key_value WHERE name = ? ORDER BY revision DESC limit ?"
 )
 
 func (g *Driver) query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
