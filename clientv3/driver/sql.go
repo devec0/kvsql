@@ -31,6 +31,7 @@ WHERE kv.name like ? %RES% ORDER BY kv.name ASC limit ?
 	insertSQL = `
 INSERT INTO key_value(` + fieldList + `)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	replaySQL = "SELECT id, " + fieldList + " FROM key_value WHERE name like ? and revision >= ? ORDER BY revision ASC"
 )
 
 func (g *Driver) query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {

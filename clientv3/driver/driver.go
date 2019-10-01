@@ -22,7 +22,6 @@ type Driver struct {
 	server *dqlite.Node
 	store  client.NodeStore
 
-	ReplaySQL      string
 	GetRevisionSQL string
 	ToDeleteSQL    string
 	DeleteOldSQL   string
@@ -159,7 +158,7 @@ func (g *Driver) cleanup(ctx context.Context) error {
 }
 
 func (g *Driver) replayEvents(ctx context.Context, key string, revision int64) ([]*KeyValue, error) {
-	rows, err := g.query(ctx, g.ReplaySQL, key, revision)
+	rows, err := g.query(ctx, replaySQL, key, revision)
 	if err != nil {
 		return nil, err
 	}
