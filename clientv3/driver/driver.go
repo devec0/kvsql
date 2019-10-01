@@ -22,7 +22,6 @@ type Driver struct {
 	server *dqlite.Node
 	store  client.NodeStore
 
-	ToDeleteSQL  string
 	DeleteOldSQL string
 
 	changes     chan *KeyValue
@@ -125,7 +124,7 @@ func (g *Driver) WaitStopped() {
 }
 
 func (g *Driver) cleanup(ctx context.Context) error {
-	rows, err := g.query(ctx, g.ToDeleteSQL)
+	rows, err := g.query(ctx, toDeleteSQL)
 	if err != nil {
 		return err
 	}

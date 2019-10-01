@@ -62,7 +62,6 @@ INSERT INTO servers(id, address)
 
 func newGeneric() *Driver {
 	return &Driver{
-		ToDeleteSQL:  "SELECT count(*) c, name, max(revision) FROM key_value GROUP BY name HAVING c > 1 or (c = 1 and del = 1)",
 		DeleteOldSQL: "DELETE FROM key_value WHERE name = ? AND (revision < ? OR (revision = ? AND del = 1))",
 	}
 }
