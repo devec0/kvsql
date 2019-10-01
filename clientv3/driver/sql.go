@@ -3,13 +3,28 @@ package driver
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
-const (
+var (
 	fieldList = "name, value, old_value, old_revision, create_revision, revision, ttl, version, del"
+	baseList  = `
+SELECT kv.id, kv.name, kv.value, kv.old_value, kv.old_revision, kv.create_revision, kv.revision, kv.ttl, kv.version, kv.del
+FROM key_value kv
+  INNER JOIN
+    (
+      SELECT MAX(revision) revision, kvi.name
+      FROM key_value kvi
+		%REV%
+        GROUP BY kvi.name
+    ) AS r
+    ON r.name = kv.name AND r.revision = kv.revision
+WHERE kv.name like ? %RES% ORDER BY kv.name ASC limit ?
+`
 
 	cleanupSQL = "DELETE FROM key_value WHERE ttl > 0 AND ttl < ?"
 	getSQL     = "SELECT id, " + fieldList + " FROM key_value WHERE name = ? ORDER BY revision DESC limit ?"
+	listSQL    = strings.Replace(strings.Replace(baseList, "%REV%", "", -1), "%RES%", "", -1)
 )
 
 func (g *Driver) query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {

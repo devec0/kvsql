@@ -26,19 +26,6 @@ import (
 )
 
 var (
-	baseList = `
-SELECT kv.id, kv.name, kv.value, kv.old_value, kv.old_revision, kv.create_revision, kv.revision, kv.ttl, kv.version, kv.del
-FROM key_value kv
-  INNER JOIN
-    (
-      SELECT MAX(revision) revision, kvi.name
-      FROM key_value kvi
-		%REV%
-        GROUP BY kvi.name
-    ) AS r
-    ON r.name = kv.name AND r.revision = kv.revision
-WHERE kv.name like ? %RES% ORDER BY kv.name ASC limit ?
-`
 	insertSQL = `
 INSERT INTO key_value(` + fieldList + `)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -79,7 +66,6 @@ INSERT INTO servers(id, address)
 
 func newGeneric() *Driver {
 	return &Driver{
-		ListSQL:         strings.Replace(strings.Replace(baseList, "%REV%", "", -1), "%RES%", "", -1),
 		ListRevisionSQL: strings.Replace(strings.Replace(baseList, "%REV%", "WHERE kvi.revision >= ?", -1), "%RES%", "", -1),
 		ListResumeSQL: strings.Replace(strings.Replace(baseList, "%REV%", "WHERE kvi.revision <= ?", -1),
 			"%RES%", "and kv.name > ? ", -1),

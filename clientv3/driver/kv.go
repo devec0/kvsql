@@ -30,7 +30,7 @@ func (g *Driver) List(ctx context.Context, revision, limit int64, rangeKey, star
 	if !strings.HasSuffix(rangeKey, "%") && revision <= 0 {
 		rows, err = g.query(ctx, getSQL, rangeKey, 1)
 	} else if revision <= 0 {
-		rows, err = g.query(ctx, g.ListSQL, rangeKey, limit)
+		rows, err = g.query(ctx, listSQL, rangeKey, limit)
 	} else if len(startKey) > 0 {
 		listRevision = revision
 		rows, err = g.query(ctx, g.ListResumeSQL, revision, rangeKey, startKey, limit)

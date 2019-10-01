@@ -22,7 +22,6 @@ type Driver struct {
 	server *dqlite.Node
 	store  client.NodeStore
 
-	ListSQL         string
 	ListRevisionSQL string
 	ListResumeSQL   string
 	ReplaySQL       string
