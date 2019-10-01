@@ -33,7 +33,7 @@ func (g *Driver) List(ctx context.Context, revision, limit int64, rangeKey, star
 		rows, err = g.query(ctx, listSQL, rangeKey, limit)
 	} else if len(startKey) > 0 {
 		listRevision = revision
-		rows, err = g.query(ctx, g.ListResumeSQL, revision, rangeKey, startKey, limit)
+		rows, err = g.query(ctx, listResumeSQL, revision, rangeKey, startKey, limit)
 	} else {
 		rows, err = g.query(ctx, listRevisionSQL, revision, rangeKey, limit)
 	}

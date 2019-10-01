@@ -66,8 +66,6 @@ INSERT INTO servers(id, address)
 
 func newGeneric() *Driver {
 	return &Driver{
-		ListResumeSQL: strings.Replace(strings.Replace(baseList, "%REV%", "WHERE kvi.revision <= ?", -1),
-			"%RES%", "and kv.name > ? ", -1),
 		InsertSQL:      insertSQL,
 		ReplaySQL:      "SELECT id, " + fieldList + " FROM key_value WHERE name like ? and revision >= ? ORDER BY revision ASC",
 		GetRevisionSQL: "SELECT id FROM revision",
