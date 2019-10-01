@@ -17,7 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type Generic struct {
+type Driver struct {
 	db     *sql.DB
 	info   client.NodeInfo
 	server *dqlite.Node
@@ -40,11 +40,11 @@ type Generic struct {
 	stopped     chan struct{}
 }
 
-func (g *Generic) DB() *sql.DB {
+func (g *Driver) DB() *sql.DB {
 	return g.db
 }
 
-func (g *Generic) currentRevision(ctx context.Context) (int64, error) {
+func (g *Driver) currentRevision(ctx context.Context) (int64, error) {
 	row := g.db.QueryRowContext(ctx, g.GetRevisionSQL)
 	rev := sql.NullInt64{}
 	if err := row.Scan(&rev); err != nil && err != sql.ErrNoRows {
@@ -60,7 +60,7 @@ func (g *Generic) currentRevision(ctx context.Context) (int64, error) {
 	return rev.Int64, nil
 }
 
-func (g *Generic) newRevision(ctx context.Context) (int64, error) {
+func (g *Driver) newRevision(ctx context.Context) (int64, error) {
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -82,7 +82,7 @@ func (g *Generic) newRevision(ctx context.Context) (int64, error) {
 	return revision, nil
 }
 
-func (g *Generic) Start(ctx context.Context) error {
+func (g *Driver) Start(ctx context.Context) error {
 	g.changes = make(chan *KeyValue, 1024)
 	g.stopped = make(chan struct{})
 
@@ -117,7 +117,7 @@ func (g *Generic) Start(ctx context.Context) error {
 	return nil
 }
 
-func (g *Generic) updateServerStore() {
+func (g *Driver) updateServerStore() {
 	servers, err := QueryServers(g.db)
 	if err != nil {
 		return
@@ -129,11 +129,11 @@ func (g *Generic) updateServerStore() {
 	g.store.Set(context.Background(), infos)
 }
 
-func (g *Generic) WaitStopped() {
+func (g *Driver) WaitStopped() {
 	<-g.stopped
 }
 
-func (g *Generic) cleanup(ctx context.Context) error {
+func (g *Driver) cleanup(ctx context.Context) error {
 	rows, err := g.queryContext(ctx, g.ToDeleteSQL)
 	if err != nil {
 		return err
@@ -165,7 +165,7 @@ func (g *Generic) cleanup(ctx context.Context) error {
 	return nil
 }
 
-func (g *Generic) Get(ctx context.Context, key string) (*KeyValue, error) {
+func (g *Driver) Get(ctx context.Context, key string) (*KeyValue, error) {
 	kvs, _, err := g.List(ctx, 0, 1, key, "")
 	if err != nil {
 		return nil, err
@@ -176,7 +176,7 @@ func (g *Generic) Get(ctx context.Context, key string) (*KeyValue, error) {
 	return nil, nil
 }
 
-func (g *Generic) replayEvents(ctx context.Context, key string, revision int64) ([]*KeyValue, error) {
+func (g *Driver) replayEvents(ctx context.Context, key string, revision int64) ([]*KeyValue, error) {
 	rows, err := g.queryContext(ctx, g.ReplaySQL, key, revision)
 	if err != nil {
 		return nil, err
@@ -195,7 +195,7 @@ func (g *Generic) replayEvents(ctx context.Context, key string, revision int64) 
 	return resp, nil
 }
 
-func (g *Generic) List(ctx context.Context, revision, limit int64, rangeKey, startKey string) ([]*KeyValue, int64, error) {
+func (g *Driver) List(ctx context.Context, revision, limit int64, rangeKey, startKey string) ([]*KeyValue, int64, error) {
 	var (
 		rows *sql.Rows
 		err  error
@@ -244,7 +244,7 @@ func (g *Generic) List(ctx context.Context, revision, limit int64, rangeKey, sta
 	return resp, listRevision, nil
 }
 
-func (g *Generic) Delete(ctx context.Context, key string, revision int64) ([]*KeyValue, error) {
+func (g *Driver) Delete(ctx context.Context, key string, revision int64) ([]*KeyValue, error) {
 	if strings.HasSuffix(key, "%") {
 		panic("can not delete list revision")
 	}
@@ -253,7 +253,7 @@ func (g *Generic) Delete(ctx context.Context, key string, revision int64) ([]*Ke
 	return nil, err
 }
 
-func (g *Generic) Update(ctx context.Context, key string, value []byte, revision, ttl int64) (*KeyValue, *KeyValue, error) {
+func (g *Driver) Update(ctx context.Context, key string, value []byte, revision, ttl int64) (*KeyValue, *KeyValue, error) {
 	kv, err := g.mod(ctx, false, key, value, revision, ttl)
 	if err != nil {
 		return nil, nil, err
@@ -269,7 +269,7 @@ func (g *Generic) Update(ctx context.Context, key string, value []byte, revision
 	return &oldKv, kv, nil
 }
 
-func (g *Generic) execContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (g *Driver) execContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	//trace := utiltrace.New(fmt.Sprintf("SQL DB ExecContext query: %s keys: %v", query, args))
 	//defer trace.LogIfLong(500 * time.Millisecond)
 
@@ -287,7 +287,7 @@ func (g *Generic) execContext(ctx context.Context, query string, args ...interfa
 	return result, nil
 }
 
-func (g *Generic) queryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (g *Driver) queryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	//trace := utiltrace.New(fmt.Sprintf("SQL DB QueryContext query: %s keys: %v", query, args))
 	//defer trace.LogIfLong(500 * time.Millisecond)
 
@@ -305,7 +305,7 @@ func (g *Generic) queryContext(ctx context.Context, query string, args ...interf
 	return rows, nil
 }
 
-func (g *Generic) mod(ctx context.Context, delete bool, key string, value []byte, revision int64, ttl int64) (*KeyValue, error) {
+func (g *Driver) mod(ctx context.Context, delete bool, key string, value []byte, revision int64, ttl int64) (*KeyValue, error) {
 	oldKv, err := g.Get(ctx, key)
 	if err != nil {
 		return nil, err

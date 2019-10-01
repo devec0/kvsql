@@ -78,8 +78,8 @@ INSERT INTO servers(id, address)
 	}
 )
 
-func newGeneric() *Generic {
-	return &Generic{
+func newGeneric() *Driver {
+	return &Driver{
 		CleanupSQL:      "DELETE FROM key_value WHERE ttl > 0 AND ttl < ?",
 		GetSQL:          "SELECT id, " + fieldList + " FROM key_value WHERE name = ? ORDER BY revision DESC limit ?",
 		ListSQL:         strings.Replace(strings.Replace(baseList, "%REV%", "", -1), "%RES%", "", -1),
@@ -94,7 +94,7 @@ func newGeneric() *Generic {
 	}
 }
 
-func NewDQLite(dir string) (*Generic, error) {
+func NewDQLite(dir string) (*Driver, error) {
 	infoPath := filepath.Join(dir, "info.yaml")
 	if _, err := os.Stat(infoPath); err != nil {
 		if os.IsNotExist(err) {
@@ -297,7 +297,7 @@ func readToJSON(r io.Reader, obj interface{}) error {
 	return json.Unmarshal(buf, obj)
 }
 
-func makeWatchHandler(g *Generic) http.HandlerFunc {
+func makeWatchHandler(g *Driver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Receive change notifications.
 		if r.Method == "POST" {

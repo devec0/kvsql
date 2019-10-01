@@ -30,7 +30,7 @@ func matchesKey(prefix bool, key string, kv *KeyValue) bool {
 	return kv.Key == key
 }
 
-func (g *Generic) globalWatcher() (chan map[string]interface{}, error) {
+func (g *Driver) globalWatcher() (chan map[string]interface{}, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	g.cancel = cancel
 	result := make(chan map[string]interface{}, 100)
@@ -52,7 +52,7 @@ func (g *Generic) globalWatcher() (chan map[string]interface{}, error) {
 	return result, nil
 }
 
-func (g *Generic) Watch(ctx context.Context, key string, revision int64) <-chan Event {
+func (g *Driver) Watch(ctx context.Context, key string, revision int64) <-chan Event {
 	ctx, parentCancel := context.WithCancel(ctx)
 
 	watchChan := make(chan Event)
@@ -160,7 +160,7 @@ func sendErrorAndClose(watchResponses chan Event, err error) {
 }
 
 // Close closes the watcher and cancels all watch requests.
-func (g *Generic) Close() error {
+func (g *Driver) Close() error {
 	if g.cancel != nil {
 		g.cancel()
 		g.cancel = nil

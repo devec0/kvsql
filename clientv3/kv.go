@@ -69,7 +69,7 @@ type KV interface {
 
 type kv struct {
 	l locker.Locker
-	d *driver.Generic
+	d *driver.Driver
 }
 
 func newKV(cfg Config) (*kv, error) {
