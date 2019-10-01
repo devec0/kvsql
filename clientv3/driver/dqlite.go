@@ -60,10 +60,6 @@ INSERT INTO servers(id, address)
 	}
 )
 
-func newGeneric() *Driver {
-	return &Driver{}
-}
-
 func NewDQLite(dir string) (*Driver, error) {
 	infoPath := filepath.Join(dir, "info.yaml")
 	if _, err := os.Stat(infoPath); err != nil {
@@ -90,7 +86,7 @@ func NewDQLite(dir string) (*Driver, error) {
 	}
 	conns := make(chan net.Conn)
 
-	g := newGeneric()
+	g := &Driver{}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/dqlite", makeDqliteHandler(conns))
