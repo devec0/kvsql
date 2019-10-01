@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	dqlite "github.com/canonical/go-dqlite"
@@ -101,7 +100,7 @@ func (g *Driver) Start(ctx context.Context) error {
 				close(g.stopped)
 				return
 			case <-time.After(time.Minute):
-				_, err := g.execContext(ctx, g.CleanupSQL, time.Now().Unix())
+				_, err := g.exec(ctx, g.CleanupSQL, time.Now().Unix())
 				if err != nil {
 					logrus.Errorf("Failed to purge expired TTL entries")
 				}
@@ -134,7 +133,7 @@ func (g *Driver) WaitStopped() {
 }
 
 func (g *Driver) cleanup(ctx context.Context) error {
-	rows, err := g.queryContext(ctx, g.ToDeleteSQL)
+	rows, err := g.query(ctx, g.ToDeleteSQL)
 	if err != nil {
 		return err
 	}
@@ -156,7 +155,7 @@ func (g *Driver) cleanup(ctx context.Context) error {
 	rows.Close()
 
 	for name, rev := range toDelete {
-		_, err = g.execContext(ctx, g.DeleteOldSQL, name, rev, rev)
+		_, err = g.exec(ctx, g.DeleteOldSQL, name, rev, rev)
 		if err != nil {
 			return err
 		}
@@ -165,19 +164,8 @@ func (g *Driver) cleanup(ctx context.Context) error {
 	return nil
 }
 
-func (g *Driver) Get(ctx context.Context, key string) (*KeyValue, error) {
-	kvs, _, err := g.List(ctx, 0, 1, key, "")
-	if err != nil {
-		return nil, err
-	}
-	if len(kvs) > 0 {
-		return kvs[0], nil
-	}
-	return nil, nil
-}
-
 func (g *Driver) replayEvents(ctx context.Context, key string, revision int64) ([]*KeyValue, error) {
-	rows, err := g.queryContext(ctx, g.ReplaySQL, key, revision)
+	rows, err := g.query(ctx, g.ReplaySQL, key, revision)
 	if err != nil {
 		return nil, err
 	}
@@ -193,194 +181,6 @@ func (g *Driver) replayEvents(ctx context.Context, key string, revision int64) (
 	}
 
 	return resp, nil
-}
-
-func (g *Driver) List(ctx context.Context, revision, limit int64, rangeKey, startKey string) ([]*KeyValue, int64, error) {
-	var (
-		rows *sql.Rows
-		err  error
-	)
-
-	if limit == 0 {
-		limit = 1000000
-	} else {
-		limit = limit + 1
-	}
-
-	listRevision, err := g.currentRevision(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-	if !strings.HasSuffix(rangeKey, "%") && revision <= 0 {
-		rows, err = g.queryContext(ctx, g.GetSQL, rangeKey, 1)
-	} else if revision <= 0 {
-		rows, err = g.queryContext(ctx, g.ListSQL, rangeKey, limit)
-	} else if len(startKey) > 0 {
-		listRevision = revision
-		rows, err = g.queryContext(ctx, g.ListResumeSQL, revision, rangeKey, startKey, limit)
-	} else {
-		rows, err = g.queryContext(ctx, g.ListRevisionSQL, revision, rangeKey, limit)
-	}
-
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-
-	var resp []*KeyValue
-	for rows.Next() {
-		value := KeyValue{}
-		if err := scan(rows.Scan, &value); err != nil {
-			return nil, 0, err
-		}
-		if value.Revision > listRevision {
-			listRevision = value.Revision
-		}
-		if value.Del == 0 {
-			resp = append(resp, &value)
-		}
-	}
-
-	return resp, listRevision, nil
-}
-
-func (g *Driver) Delete(ctx context.Context, key string, revision int64) ([]*KeyValue, error) {
-	if strings.HasSuffix(key, "%") {
-		panic("can not delete list revision")
-	}
-
-	_, err := g.mod(ctx, true, key, []byte{}, revision, 0)
-	return nil, err
-}
-
-func (g *Driver) Update(ctx context.Context, key string, value []byte, revision, ttl int64) (*KeyValue, *KeyValue, error) {
-	kv, err := g.mod(ctx, false, key, value, revision, ttl)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if kv.Version == 1 {
-		return nil, kv, nil
-	}
-
-	oldKv := *kv
-	oldKv.Revision = oldKv.OldRevision
-	oldKv.Value = oldKv.OldValue
-	return &oldKv, kv, nil
-}
-
-func (g *Driver) execContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	//trace := utiltrace.New(fmt.Sprintf("SQL DB ExecContext query: %s keys: %v", query, args))
-	//defer trace.LogIfLong(500 * time.Millisecond)
-
-	var err error
-	var result sql.Result
-	f := func() error {
-		result, err = g.db.ExecContext(ctx, query, args...)
-		return err
-	}
-
-	if err := retry(f); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (g *Driver) queryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	//trace := utiltrace.New(fmt.Sprintf("SQL DB QueryContext query: %s keys: %v", query, args))
-	//defer trace.LogIfLong(500 * time.Millisecond)
-
-	var err error
-	var rows *sql.Rows
-	f := func() error {
-		rows, err = g.db.QueryContext(ctx, query, args...)
-		return err
-	}
-
-	if err := retry(f); err != nil {
-		return nil, err
-	}
-
-	return rows, nil
-}
-
-func (g *Driver) mod(ctx context.Context, delete bool, key string, value []byte, revision int64, ttl int64) (*KeyValue, error) {
-	oldKv, err := g.Get(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-
-	if revision > 0 && oldKv == nil {
-		return nil, ErrNotExists
-	}
-
-	if revision > 0 && oldKv.Revision != revision {
-		return nil, ErrRevisionMatch
-	}
-
-	if ttl > 0 {
-		ttl = int64(time.Now().Unix()) + ttl
-	}
-
-	newRevision, err := g.newRevision(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result := &KeyValue{
-		Key:            key,
-		Value:          value,
-		Revision:       newRevision,
-		TTL:            int64(ttl),
-		CreateRevision: newRevision,
-		Version:        1,
-	}
-	if oldKv != nil {
-		result.OldRevision = oldKv.Revision
-		result.OldValue = oldKv.Value
-		result.TTL = oldKv.TTL
-		result.CreateRevision = oldKv.CreateRevision
-		result.Version = oldKv.Version + 1
-	}
-
-	if delete {
-		result.Del = 1
-	}
-
-	_, err = g.execContext(ctx, g.InsertSQL,
-		result.Key,
-		result.Value,
-		result.OldValue,
-		result.OldRevision,
-		result.CreateRevision,
-		result.Revision,
-		result.TTL,
-		result.Version,
-		result.Del,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	client, err := client.New(ctx, g.server.BindAddress())
-	if err != nil {
-		return nil, errors.Wrap(err, "create dqlite client")
-	}
-	defer client.Close()
-
-	info, err := client.Leader(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "get leader")
-	}
-	if info == nil {
-		return nil, fmt.Errorf("no leader found")
-	}
-
-	if err := postWatchChange(info.Address, result); err != nil {
-		return nil, err
-	}
-
-	return result, nil
 }
 
 func postWatchChange(addr string, kv *KeyValue) error {
