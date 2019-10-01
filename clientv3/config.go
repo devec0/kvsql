@@ -14,28 +14,6 @@
 
 package clientv3
 
-import (
-	"crypto/tls"
-	"time"
-
-	"google.golang.org/grpc"
-)
-
 type Config struct {
-	// DialKeepAliveTime is the time in seconds after which client pings the server to see if
-	// transport is alive.
-	DialKeepAliveTime time.Duration `json:"dial-keep-alive-time"`
-
-	// DialKeepAliveTimeout is the time in seconds that the client waits for a response for the
-	// keep-alive probe.  If the response is not received in this time, the connection is closed.
-	DialKeepAliveTimeout time.Duration `json:"dial-keep-alive-timeout"`
-
-	// TLS holds the client secure credentials, if any.
-	TLS *tls.Config
-
-	DialTimeout time.Duration
-
-	DialOptions []grpc.DialOption
-
 	Dir string
 }

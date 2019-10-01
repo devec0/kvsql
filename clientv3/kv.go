@@ -104,8 +104,6 @@ func newKV(cfg Config) (*kv, error) {
 }
 
 func (k *kv) Put(ctx context.Context, key, val string, opts ...OpOption) (*PutResponse, error) {
-	//trace := utiltrace.New(fmt.Sprintf("SQL Put key: %s", key))
-	//defer trace.LogIfLong(500 * time.Millisecond)
 	k.l.Lock(key)
 	defer k.l.Unlock(key)
 
@@ -122,8 +120,6 @@ func (k *kv) opPut(ctx context.Context, op Op) (*PutResponse, error) {
 }
 
 func (k *kv) Get(ctx context.Context, key string, opts ...OpOption) (*GetResponse, error) {
-	//trace := utiltrace.New(fmt.Sprintf("SQL Get key: %s", key))
-	//defer trace.LogIfLong(500 * time.Millisecond)
 	op := OpGet(key, opts...)
 	return k.opGet(ctx, op)
 }

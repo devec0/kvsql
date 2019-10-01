@@ -14,17 +14,11 @@
 
 package clientv3
 
-import (
-	"google.golang.org/grpc"
-)
-
 // Client provides and manages an etcd v3 client session.
 type Client struct {
-	Cluster
 	KV
 	Lease
 	Watcher
-	callOpts []grpc.CallOption
 }
 
 // New creates a new etcdv3 client from a given configuration.
