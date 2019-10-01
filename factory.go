@@ -64,6 +64,7 @@ func NewKVSQLStorage(c storagebackend.Config) (storage.Interface, func(), error)
 	return etcd3.New(client, c.Codec, c.Prefix, transformer, c.Paging), destroyFunc, nil
 }
 
+// XXX: find a better way to shutdown the storage.
 func Close() {
 	clientv3.Shutdown()
 }
