@@ -22,9 +22,8 @@ type Driver struct {
 	server *dqlite.Node
 	store  client.NodeStore
 
-	GetRevisionSQL string
-	ToDeleteSQL    string
-	DeleteOldSQL   string
+	ToDeleteSQL  string
+	DeleteOldSQL string
 
 	changes     chan *KeyValue
 	broadcaster broadcast.Broadcaster
@@ -37,7 +36,7 @@ func (g *Driver) DB() *sql.DB {
 }
 
 func (g *Driver) currentRevision(ctx context.Context) (int64, error) {
-	row := g.db.QueryRowContext(ctx, g.GetRevisionSQL)
+	row := g.db.QueryRowContext(ctx, getRevisionSQL)
 	rev := sql.NullInt64{}
 	if err := row.Scan(&rev); err != nil && err != sql.ErrNoRows {
 		return 0, errors.Wrap(err, "Failed to get initial revision")
