@@ -61,9 +61,7 @@ INSERT INTO servers(id, address)
 )
 
 func newGeneric() *Driver {
-	return &Driver{
-		DeleteOldSQL: "DELETE FROM key_value WHERE name = ? AND (revision < ? OR (revision = ? AND del = 1))",
-	}
+	return &Driver{}
 }
 
 func NewDQLite(dir string) (*Driver, error) {

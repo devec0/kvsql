@@ -22,8 +22,6 @@ type Driver struct {
 	server *dqlite.Node
 	store  client.NodeStore
 
-	DeleteOldSQL string
-
 	changes     chan *KeyValue
 	broadcaster broadcast.Broadcaster
 	cancel      func()
@@ -146,7 +144,7 @@ func (g *Driver) cleanup(ctx context.Context) error {
 	rows.Close()
 
 	for name, rev := range toDelete {
-		_, err = g.exec(ctx, g.DeleteOldSQL, name, rev, rev)
+		_, err = g.exec(ctx, deleteOldSQL, name, rev, rev)
 		if err != nil {
 			return err
 		}

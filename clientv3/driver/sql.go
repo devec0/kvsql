@@ -34,6 +34,7 @@ INSERT INTO key_value(` + fieldList + `)
 	replaySQL      = "SELECT id, " + fieldList + " FROM key_value WHERE name like ? and revision >= ? ORDER BY revision ASC"
 	getRevisionSQL = "SELECT id FROM revision"
 	toDeleteSQL    = "SELECT count(*) c, name, max(revision) FROM key_value GROUP BY name HAVING c > 1 or (c = 1 and del = 1)"
+	deleteOldSQL   = "DELETE FROM key_value WHERE name = ? AND (revision < ? OR (revision = ? AND del = 1))"
 )
 
 func (g *Driver) query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
