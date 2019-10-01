@@ -5,6 +5,10 @@ import (
 	"database/sql"
 )
 
+const (
+	cleanupSQL = "DELETE FROM key_value WHERE ttl > 0 AND ttl < ?"
+)
+
 func (g *Driver) query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	//trace := utiltrace.New(fmt.Sprintf("SQL DB QueryContext query: %s keys: %v", query, args))
 	//defer trace.LogIfLong(500 * time.Millisecond)

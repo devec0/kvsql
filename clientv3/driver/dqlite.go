@@ -80,7 +80,6 @@ INSERT INTO servers(id, address)
 
 func newGeneric() *Driver {
 	return &Driver{
-		CleanupSQL:      "DELETE FROM key_value WHERE ttl > 0 AND ttl < ?",
 		GetSQL:          "SELECT id, " + fieldList + " FROM key_value WHERE name = ? ORDER BY revision DESC limit ?",
 		ListSQL:         strings.Replace(strings.Replace(baseList, "%REV%", "", -1), "%RES%", "", -1),
 		ListRevisionSQL: strings.Replace(strings.Replace(baseList, "%REV%", "WHERE kvi.revision >= ?", -1), "%RES%", "", -1),

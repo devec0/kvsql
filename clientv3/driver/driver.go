@@ -22,7 +22,6 @@ type Driver struct {
 	server *dqlite.Node
 	store  client.NodeStore
 
-	CleanupSQL      string
 	GetSQL          string
 	ListSQL         string
 	ListRevisionSQL string
@@ -100,7 +99,7 @@ func (g *Driver) Start(ctx context.Context) error {
 				close(g.stopped)
 				return
 			case <-time.After(time.Minute):
-				_, err := g.exec(ctx, g.CleanupSQL, time.Now().Unix())
+				_, err := g.exec(ctx, cleanupSQL, time.Now().Unix())
 				if err != nil {
 					logrus.Errorf("Failed to purge expired TTL entries")
 				}
