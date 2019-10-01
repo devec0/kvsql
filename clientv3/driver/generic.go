@@ -134,7 +134,7 @@ func (g *Generic) WaitStopped() {
 }
 
 func (g *Generic) cleanup(ctx context.Context) error {
-	rows, err := g.QueryContext(ctx, g.ToDeleteSQL)
+	rows, err := g.queryContext(ctx, g.ToDeleteSQL)
 	if err != nil {
 		return err
 	}
@@ -177,7 +177,7 @@ func (g *Generic) Get(ctx context.Context, key string) (*KeyValue, error) {
 }
 
 func (g *Generic) replayEvents(ctx context.Context, key string, revision int64) ([]*KeyValue, error) {
-	rows, err := g.QueryContext(ctx, g.ReplaySQL, key, revision)
+	rows, err := g.queryContext(ctx, g.ReplaySQL, key, revision)
 	if err != nil {
 		return nil, err
 	}
@@ -212,14 +212,14 @@ func (g *Generic) List(ctx context.Context, revision, limit int64, rangeKey, sta
 		return nil, 0, err
 	}
 	if !strings.HasSuffix(rangeKey, "%") && revision <= 0 {
-		rows, err = g.QueryContext(ctx, g.GetSQL, rangeKey, 1)
+		rows, err = g.queryContext(ctx, g.GetSQL, rangeKey, 1)
 	} else if revision <= 0 {
-		rows, err = g.QueryContext(ctx, g.ListSQL, rangeKey, limit)
+		rows, err = g.queryContext(ctx, g.ListSQL, rangeKey, limit)
 	} else if len(startKey) > 0 {
 		listRevision = revision
-		rows, err = g.QueryContext(ctx, g.ListResumeSQL, revision, rangeKey, startKey, limit)
+		rows, err = g.queryContext(ctx, g.ListResumeSQL, revision, rangeKey, startKey, limit)
 	} else {
-		rows, err = g.QueryContext(ctx, g.ListRevisionSQL, revision, rangeKey, limit)
+		rows, err = g.queryContext(ctx, g.ListRevisionSQL, revision, rangeKey, limit)
 	}
 
 	if err != nil {
@@ -287,7 +287,7 @@ func (g *Generic) ExecContext(ctx context.Context, query string, args ...interfa
 	return result, nil
 }
 
-func (g *Generic) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (g *Generic) queryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	//trace := utiltrace.New(fmt.Sprintf("SQL DB QueryContext query: %s keys: %v", query, args))
 	//defer trace.LogIfLong(500 * time.Millisecond)
 
