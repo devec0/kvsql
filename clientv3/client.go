@@ -23,15 +23,15 @@ type Client struct {
 
 // New creates a new etcdv3 client from a given configuration.
 func New(cfg Config) (*Client, error) {
-	c := &Client{
-		Lease: &lessor{},
-	}
 	kv, err := newKV(cfg)
 	if err != nil {
 		return nil, err
 	}
-	c.KV = kv
-	c.Watcher = kv
+	c := &Client{
+		KV:      kv,
+		Watcher: kv,
+		Lease:   &lessor{},
+	}
 	return c, nil
 }
 
