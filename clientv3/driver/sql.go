@@ -22,9 +22,10 @@ FROM key_value kv
 WHERE kv.name like ? %RES% ORDER BY kv.name ASC limit ?
 `
 
-	cleanupSQL = "DELETE FROM key_value WHERE ttl > 0 AND ttl < ?"
-	getSQL     = "SELECT id, " + fieldList + " FROM key_value WHERE name = ? ORDER BY revision DESC limit ?"
-	listSQL    = strings.Replace(strings.Replace(baseList, "%REV%", "", -1), "%RES%", "", -1)
+	cleanupSQL      = "DELETE FROM key_value WHERE ttl > 0 AND ttl < ?"
+	getSQL          = "SELECT id, " + fieldList + " FROM key_value WHERE name = ? ORDER BY revision DESC limit ?"
+	listSQL         = strings.Replace(strings.Replace(baseList, "%REV%", "", -1), "%RES%", "", -1)
+	listRevisionSQL = strings.Replace(strings.Replace(baseList, "%REV%", "WHERE kvi.revision >= ?", -1), "%RES%", "", -1)
 )
 
 func (g *Driver) query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {

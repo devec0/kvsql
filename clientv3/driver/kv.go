@@ -35,7 +35,7 @@ func (g *Driver) List(ctx context.Context, revision, limit int64, rangeKey, star
 		listRevision = revision
 		rows, err = g.query(ctx, g.ListResumeSQL, revision, rangeKey, startKey, limit)
 	} else {
-		rows, err = g.query(ctx, g.ListRevisionSQL, revision, rangeKey, limit)
+		rows, err = g.query(ctx, listRevisionSQL, revision, rangeKey, limit)
 	}
 
 	if err != nil {

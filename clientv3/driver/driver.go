@@ -22,13 +22,12 @@ type Driver struct {
 	server *dqlite.Node
 	store  client.NodeStore
 
-	ListRevisionSQL string
-	ListResumeSQL   string
-	ReplaySQL       string
-	InsertSQL       string
-	GetRevisionSQL  string
-	ToDeleteSQL     string
-	DeleteOldSQL    string
+	ListResumeSQL  string
+	ReplaySQL      string
+	InsertSQL      string
+	GetRevisionSQL string
+	ToDeleteSQL    string
+	DeleteOldSQL   string
 
 	changes     chan *KeyValue
 	broadcaster broadcast.Broadcaster
