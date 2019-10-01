@@ -26,10 +26,6 @@ import (
 )
 
 var (
-	insertSQL = `
-INSERT INTO key_value(` + fieldList + `)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-
 	addServerSQL = `
 INSERT INTO servers(id, address)
    VALUES(?, ?)`
@@ -66,7 +62,6 @@ INSERT INTO servers(id, address)
 
 func newGeneric() *Driver {
 	return &Driver{
-		InsertSQL:      insertSQL,
 		ReplaySQL:      "SELECT id, " + fieldList + " FROM key_value WHERE name like ? and revision >= ? ORDER BY revision ASC",
 		GetRevisionSQL: "SELECT id FROM revision",
 		ToDeleteSQL:    "SELECT count(*) c, name, max(revision) FROM key_value GROUP BY name HAVING c > 1 or (c = 1 and del = 1)",

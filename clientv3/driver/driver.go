@@ -23,7 +23,6 @@ type Driver struct {
 	store  client.NodeStore
 
 	ReplaySQL      string
-	InsertSQL      string
 	GetRevisionSQL string
 	ToDeleteSQL    string
 	DeleteOldSQL   string

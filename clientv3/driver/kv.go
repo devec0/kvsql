@@ -138,7 +138,7 @@ func (g *Driver) mod(ctx context.Context, delete bool, key string, value []byte,
 		result.Del = 1
 	}
 
-	_, err = g.exec(ctx, g.InsertSQL,
+	_, err = g.exec(ctx, insertSQL,
 		result.Key,
 		result.Value,
 		result.OldValue,

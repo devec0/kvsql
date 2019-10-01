@@ -28,6 +28,9 @@ WHERE kv.name like ? %RES% ORDER BY kv.name ASC limit ?
 	listRevisionSQL = strings.Replace(strings.Replace(baseList, "%REV%", "WHERE kvi.revision >= ?", -1), "%RES%", "", -1)
 	listResumeSQL   = strings.Replace(strings.Replace(baseList, "%REV%", "WHERE kvi.revision <= ?", -1),
 		"%RES%", "and kv.name > ? ", -1)
+	insertSQL = `
+INSERT INTO key_value(` + fieldList + `)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 )
 
 func (g *Driver) query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
