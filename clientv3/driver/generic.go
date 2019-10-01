@@ -101,7 +101,7 @@ func (g *Generic) Start(ctx context.Context) error {
 				close(g.stopped)
 				return
 			case <-time.After(time.Minute):
-				_, err := g.ExecContext(ctx, g.CleanupSQL, time.Now().Unix())
+				_, err := g.execContext(ctx, g.CleanupSQL, time.Now().Unix())
 				if err != nil {
 					logrus.Errorf("Failed to purge expired TTL entries")
 				}
@@ -156,7 +156,7 @@ func (g *Generic) cleanup(ctx context.Context) error {
 	rows.Close()
 
 	for name, rev := range toDelete {
-		_, err = g.ExecContext(ctx, g.DeleteOldSQL, name, rev, rev)
+		_, err = g.execContext(ctx, g.DeleteOldSQL, name, rev, rev)
 		if err != nil {
 			return err
 		}
@@ -269,7 +269,7 @@ func (g *Generic) Update(ctx context.Context, key string, value []byte, revision
 	return &oldKv, kv, nil
 }
 
-func (g *Generic) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (g *Generic) execContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	//trace := utiltrace.New(fmt.Sprintf("SQL DB ExecContext query: %s keys: %v", query, args))
 	//defer trace.LogIfLong(500 * time.Millisecond)
 
@@ -347,7 +347,7 @@ func (g *Generic) mod(ctx context.Context, delete bool, key string, value []byte
 		result.Del = 1
 	}
 
-	_, err = g.ExecContext(ctx, g.InsertSQL,
+	_, err = g.execContext(ctx, g.InsertSQL,
 		result.Key,
 		result.Value,
 		result.OldValue,
