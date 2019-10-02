@@ -8,18 +8,32 @@ import (
 	"testing"
 
 	"github.com/freeekanayaka/kvsql/server"
-	"github.com/stretchr/testify/assert"
+	"github.com/ghodss/yaml"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNew_FirstNode(t *testing.T) {
-	dir, cleanup := newDirWithCert(t)
+	init := &server.Init{Address: "localhost:9999"}
+	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
 
 	server, err := server.New(dir)
 	require.NoError(t, err)
 
 	require.NoError(t, server.Close(context.Background()))
+}
+
+// Return a new temporary directory populated with the test cluster certificate
+// and an init.yaml file with the given content.
+func newDirWithInit(t *testing.T, init *server.Init) (string, func()) {
+	dir, cleanup := newDirWithCert(t)
+
+	path := filepath.Join(dir, "init.yaml")
+	bytes, err := yaml.Marshal(init)
+	require.NoError(t, err)
+	require.NoError(t, ioutil.WriteFile(path, bytes, 0644))
+
+	return dir, cleanup
 }
 
 // Return a new temporary directory populated with the test cluster certificate.
@@ -32,8 +46,8 @@ func newDirWithCert(t *testing.T) (string, func()) {
 	for _, filename := range []string{"cluster.crt", "cluster.key"} {
 		link := filepath.Join(dir, filename)
 		target, err := filepath.Abs(filepath.Join("testdata", filename))
-		assert.NoError(t, err)
-		assert.NoError(t, os.Symlink(target, link))
+		require.NoError(t, err)
+		require.NoError(t, os.Symlink(target, link))
 	}
 
 	return dir, cleanup
@@ -44,10 +58,10 @@ func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
 	dir, err := ioutil.TempDir("", "kvsql-server-test-")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cleanup := func() {
-		assert.NoError(t, os.RemoveAll(dir))
+		require.NoError(t, os.RemoveAll(dir))
 	}
 
 	return dir, cleanup

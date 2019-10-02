@@ -2,13 +2,15 @@ package server
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
 	"path/filepath"
 
 	"github.com/pkg/errors"
 )
 
 // See https://github.com/denji/golang-tls
-func newTLSConfig(dir string) (*tls.Config, error) {
+func newTLSServerConfig(dir string) (*tls.Config, error) {
 	crt := filepath.Join(dir, "cluster.crt")
 	key := filepath.Join(dir, "cluster.key")
 
@@ -30,5 +32,31 @@ func newTLSConfig(dir string) (*tls.Config, error) {
 		Certificates: []tls.Certificate{certificate},
 	}
 
+	return cfg, nil
+}
+
+// See https://venilnoronha.io/a-step-by-step-guide-to-mtls-in-go
+func newTLSClientConfig(dir string) (*tls.Config, error) {
+	crt := filepath.Join(dir, "cluster.crt")
+	key := filepath.Join(dir, "cluster.key")
+
+	certificate, err := tls.LoadX509KeyPair(crt, key)
+	if err != nil {
+		return nil, errors.Wrap(err, "load cluster TLS certificate")
+	}
+
+	// Create a CA certificate pool and add cert.pem to it
+	data, err := ioutil.ReadFile(crt)
+	if err != nil {
+		return nil, errors.Wrap(err, "read cluster certificate")
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(data)
+
+	// Create a HTTPS client and supply the created CA pool
+	cfg := &tls.Config{
+		RootCAs:      pool,
+		Certificates: []tls.Certificate{certificate},
+	}
 	return cfg, nil
 }
