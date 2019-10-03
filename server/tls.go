@@ -19,6 +19,14 @@ func newTLSServerConfig(dir string) (*tls.Config, error) {
 		return nil, errors.Wrap(err, "load cluster TLS certificate")
 	}
 
+	// Create a CA certificate pool and add cluster.crt to it
+	data, err := ioutil.ReadFile(crt)
+	if err != nil {
+		return nil, errors.Wrap(err, "read cluster certificate")
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(data)
+
 	cfg := &tls.Config{
 		MinVersion:               tls.VersionTLS12,
 		CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
@@ -30,7 +38,10 @@ func newTLSServerConfig(dir string) (*tls.Config, error) {
 			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
 		},
 		Certificates: []tls.Certificate{certificate},
+		ClientCAs:    pool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
 	}
+	cfg.BuildNameToCertificate()
 
 	return cfg, nil
 }
@@ -45,7 +56,7 @@ func newTLSClientConfig(dir string) (*tls.Config, error) {
 		return nil, errors.Wrap(err, "load cluster TLS certificate")
 	}
 
-	// Create a CA certificate pool and add cert.pem to it
+	// Create a CA certificate pool and add cluster.crt to it
 	data, err := ioutil.ReadFile(crt)
 	if err != nil {
 		return nil, errors.Wrap(err, "read cluster certificate")

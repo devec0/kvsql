@@ -169,6 +169,10 @@ func New(dir string) (*Server, error) {
 	return s, nil
 }
 
+func (s *Server) DB() *sql.DB {
+	return s.db
+}
+
 func (s *Server) Close(ctx context.Context) error {
 	if err := s.db.Close(); err != nil {
 		return errors.Wrap(err, "close cluster database")
