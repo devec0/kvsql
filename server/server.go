@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
-	"fmt"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -56,6 +55,10 @@ func New(dir string) (*Server, error) {
 		if err := store.Set(context.Background(), []client.NodeInfo{info}); err != nil {
 			return nil, errors.Wrap(err, "initialize node store")
 		}
+	} else {
+		if err := loadInfo(dir, &info); err != nil {
+			return nil, err
+		}
 	}
 
 	cfg, err := newTLSServerConfig(dir)
@@ -84,8 +87,7 @@ func New(dir string) (*Server, error) {
 
 	conns := make(chan net.Conn)
 
-	proxy := &dqliteProxy{conns: conns, addr: node.BindAddress()}
-	go proxy.Start()
+	startDqliteProxy(conns, node.BindAddress())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/dqlite", makeDqliteHandler(conns))
@@ -106,7 +108,7 @@ func New(dir string) (*Server, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "create dqlite driver")
 	}
-	name := fmt.Sprintf("dqlite-%d", info.ID)
+	name := makeDriverName()
 	sql.Register(name, driver)
 
 	db, err := sql.Open(name, "k8s")

@@ -60,6 +60,11 @@ func maybeLoadInit(dir string) (*Init, error) {
 	if err := yaml.Unmarshal(data, init); err != nil {
 		return nil, errors.Wrap(err, "parse init.yaml")
 	}
+
+	if init.Address == "" {
+		return nil, fmt.Errorf("server address is empty")
+	}
+
 	return init, nil
 
 }

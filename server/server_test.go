@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew_FirstNode(t *testing.T) {
+func TestNew_FirstNode_Init(t *testing.T) {
 	init := &server.Init{Address: "localhost:9999"}
 	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
@@ -21,6 +21,22 @@ func TestNew_FirstNode(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, server.Close(context.Background()))
+}
+
+func TestNew_FirstNode_Restart(t *testing.T) {
+	init := &server.Init{Address: "localhost:9999"}
+	dir, cleanup := newDirWithInit(t, init)
+	defer cleanup()
+
+	s, err := server.New(dir)
+	require.NoError(t, err)
+
+	require.NoError(t, s.Close(context.Background()))
+
+	s, err = server.New(dir)
+	require.NoError(t, err)
+
+	require.NoError(t, s.Close(context.Background()))
 }
 
 // Return a new temporary directory populated with the test cluster certificate

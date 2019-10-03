@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/canonical/go-dqlite"
 	"github.com/pkg/errors"
@@ -28,3 +29,11 @@ func insertServer(ctx context.Context, db *sql.DB, info dqlite.NodeInfo) error {
 	}
 	return nil
 }
+
+// Create a unique name to pass to sql.Register.
+func makeDriverName() string {
+	driverIndex++
+	return fmt.Sprintf("dqlite-%d", driverIndex)
+}
+
+var driverIndex = 0

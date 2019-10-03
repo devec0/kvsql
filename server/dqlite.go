@@ -15,6 +15,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+func startDqliteProxy(conns chan net.Conn, addr string) *dqliteProxy {
+	proxy := &dqliteProxy{conns: conns, addr: addr}
+	go proxy.Start()
+	return proxy
+}
+
 type dqliteProxy struct {
 	conns chan net.Conn
 	addr  string
