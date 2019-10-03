@@ -137,7 +137,42 @@ func makeDqliteDialFunc(dir string) (client.DialFunc, error) {
 			return nil, fmt.Errorf("missing or unexpected Upgrade header in response")
 		}
 
-		return conn, nil
+		listener, err := net.Listen("unix", "")
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to create unix listener")
+		}
+
+		goUnix, err := net.Dial("unix", listener.Addr().String())
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to connect to unix listener")
+		}
+
+		cUnix, err := listener.Accept()
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to connect to unix listener")
+		}
+
+		listener.Close()
+
+		go func() {
+			_, err := io.Copy(goUnix, conn)
+			if err != nil {
+				fmt.Printf("Dqlite client proxy TLS -> Unix: %v\n", err)
+			}
+			goUnix.Close()
+			conn.Close()
+		}()
+
+		go func() {
+			_, err := io.Copy(conn, goUnix)
+			if err != nil {
+				fmt.Printf("Dqlite client proxy Unix -> TLS: %v\n", err)
+			}
+			conn.Close()
+			goUnix.Close()
+		}()
+
+		return cUnix, nil
 	}
 
 	return dial, nil

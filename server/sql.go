@@ -30,6 +30,17 @@ func insertServer(ctx context.Context, db *sql.DB, info dqlite.NodeInfo) error {
 	return nil
 }
 
+// Return the highest server ID.
+func queryMaxServerID(ctx context.Context, db *sql.DB) (uint64, error) {
+	stmt := "SELECT id FROM servers ORDER BY id DESC LIMIT 1"
+	row := db.QueryRowContext(ctx, stmt)
+	id := uint64(0)
+	if err := row.Scan(&id); err != nil {
+		return 0, errors.Wrap(err, "query max server ID")
+	}
+	return id, nil
+}
+
 // Create a unique name to pass to sql.Register.
 func makeDriverName() string {
 	driverIndex++

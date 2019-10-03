@@ -37,23 +37,59 @@ func New(dir string) (*Server, error) {
 		return nil, errors.Wrap(err, "open node store")
 	}
 
+	// Create the dqlite dial function and driver now, we might need it below to join.
+	dial, err := makeDqliteDialFunc(dir)
+	if err != nil {
+		return nil, err
+	}
+	driver, err := driver.New(
+		store, driver.WithDialFunc(dial),
+		driver.WithConnectionTimeout(10*time.Second),
+		driver.WithContextTimeout(10*time.Second),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "create dqlite driver")
+	}
+	name := makeDriverName()
+	sql.Register(name, driver)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	info := dqlite.NodeInfo{}
 	if init != nil {
 		info.Address = init.Address
-		servers := []client.NodeInfo{}
 		if len(init.Cluster) == 0 {
 			// This is the first node of a new cluster.
 			info.ID = 1
-			servers = append(servers, info)
+			if err := store.Set(context.Background(), []client.NodeInfo{info}); err != nil {
+				return nil, errors.Wrap(err, "initialize node store")
+			}
+		} else {
+			servers := make([]client.NodeInfo, len(init.Cluster))
+			for i, address := range init.Cluster {
+				servers[i].ID = uint64(i + 1) // The ID isn't really used
+				servers[i].Address = address
+			}
+			if err := store.Set(context.Background(), servers); err != nil {
+				return nil, errors.Wrap(err, "initialize node store")
+			}
+			// Figure out our ID.
+			db, err := sql.Open(name, "k8s")
+			if err != nil {
+				return nil, errors.Wrap(err, "open cluster database")
+			}
+			id, err := queryMaxServerID(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			info.ID = id + 1
 		}
 		if err := writeInfo(dir, info); err != nil {
 			return nil, err
 		}
 		if err := rmInit(dir); err != nil {
 			return nil, err
-		}
-		if err := store.Set(context.Background(), []client.NodeInfo{info}); err != nil {
-			return nil, errors.Wrap(err, "initialize node store")
 		}
 	} else {
 		if err := loadInfo(dir, &info); err != nil {
@@ -69,11 +105,6 @@ func New(dir string) (*Server, error) {
 	listener, err := tls.Listen("tcp", info.Address, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "bind API address")
-	}
-
-	dial, err := makeDqliteDialFunc(dir)
-	if err != nil {
-		return nil, err
 	}
 
 	node, err := dqlite.New(
@@ -100,31 +131,26 @@ func New(dir string) (*Server, error) {
 		close(conns)
 	}()
 
-	driver, err := driver.New(
-		store, driver.WithDialFunc(dial),
-		driver.WithConnectionTimeout(10*time.Second),
-		driver.WithContextTimeout(10*time.Second),
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "create dqlite driver")
-	}
-	name := makeDriverName()
-	sql.Register(name, driver)
-
 	db, err := sql.Open(name, "k8s")
 	if err != nil {
 		return nil, errors.Wrap(err, "open cluster database")
 	}
 
-	// If we are initializing a new node, update the cluster database
+	// If we are initializing a new node, update the cluster state
 	// accordingly.
 	if init != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
 		if len(init.Cluster) == 0 {
 			if err := createServersTable(ctx, db); err != nil {
 				return nil, err
+			}
+		} else {
+			client, err := client.FindLeader(ctx, store, client.WithDialFunc(dial))
+			if err != nil {
+				return nil, errors.Wrap(err, "find leader")
+			}
+			defer client.Close()
+			if err := client.Add(ctx, info); err != nil {
+				return nil, errors.Wrap(err, "join cluster")
 			}
 		}
 

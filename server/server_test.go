@@ -13,7 +13,7 @@ import (
 )
 
 func TestNew_FirstNode_Init(t *testing.T) {
-	init := &server.Init{Address: "localhost:9999"}
+	init := &server.Init{Address: "localhost:9991"}
 	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
 
@@ -24,7 +24,7 @@ func TestNew_FirstNode_Init(t *testing.T) {
 }
 
 func TestNew_FirstNode_Restart(t *testing.T) {
-	init := &server.Init{Address: "localhost:9999"}
+	init := &server.Init{Address: "localhost:9991"}
 	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
 
@@ -37,6 +37,25 @@ func TestNew_FirstNode_Restart(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, s.Close(context.Background()))
+}
+
+func TestNew_SecondNode_Init(t *testing.T) {
+	init1 := &server.Init{Address: "localhost:9991"}
+	dir1, cleanup1 := newDirWithInit(t, init1)
+	defer cleanup1()
+
+	s1, err := server.New(dir1)
+	require.NoError(t, err)
+
+	init2 := &server.Init{Address: "localhost:9992", Cluster: []string{"localhost:9991"}}
+	dir2, cleanup2 := newDirWithInit(t, init2)
+	defer cleanup2()
+
+	s2, err := server.New(dir2)
+	require.NoError(t, err)
+
+	require.NoError(t, s1.Close(context.Background()))
+	require.NoError(t, s2.Close(context.Background()))
 }
 
 // Return a new temporary directory populated with the test cluster certificate
