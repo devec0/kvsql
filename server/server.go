@@ -124,8 +124,7 @@ func New(dir string) (*Server, error) {
 				return nil, err
 			}
 		} else {
-			dial := dqliteDial(cert)
-			if err := addNode(ctx, store, dial, info.ID, info.Address); err != nil {
+			if err := dqliteAdd(ctx, info.ID, info.Address, store, cert); err != nil {
 				return nil, err
 			}
 		}

@@ -160,7 +160,8 @@ func makeDqliteHandler(addr string) http.HandlerFunc {
 	}
 }
 
-func addNode(ctx context.Context, store client.NodeStore, dial client.DialFunc, id uint64, address string) error {
+func dqliteAdd(ctx context.Context, id uint64, address string, store client.NodeStore, cert *config.Cert) error {
+	dial := dqliteDial(cert)
 	info := client.NodeInfo{ID: id, Address: address}
 	client, err := client.FindLeader(ctx, store, client.WithDialFunc(dial))
 	if err != nil {
