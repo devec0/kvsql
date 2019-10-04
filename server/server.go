@@ -6,12 +6,12 @@ import (
 	"database/sql"
 	"net"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/client"
 	"github.com/canonical/go-dqlite/driver"
+	kvsqlclient "github.com/freeekanayaka/kvsql/client"
 	"github.com/freeekanayaka/kvsql/config"
 	"github.com/pkg/errors"
 )
@@ -33,16 +33,19 @@ func New(dir string) (*Server, error) {
 
 	// Open the node store, effectively creating a new empty one if we're
 	// initializing.
-	store, err := client.DefaultNodeStore(filepath.Join(dir, "servers.sql"))
-	if err != nil {
-		return nil, errors.Wrap(err, "open node store")
-	}
-
-	// Create the dqlite dial function and driver now, we might need it below to join.
-	dial, err := makeDqliteDialFunc(dir)
+	store, err := config.LoadNodeStore(dir)
 	if err != nil {
 		return nil, err
 	}
+
+	// Load the TLS certificates.
+	cert, err := config.LoadCert(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the dqlite dial function and driver now, we might need it below to join.
+	dial := kvsqlclient.DialFunc(cert)
 	driver, err := driver.New(
 		store, driver.WithDialFunc(dial),
 		driver.WithConnectionTimeout(10*time.Second),
@@ -98,11 +101,7 @@ func New(dir string) (*Server, error) {
 		}
 	}
 
-	cfg, err := newTLSServerConfig(dir)
-	if err != nil {
-		return nil, err
-	}
-
+	cfg := newTLSServerConfig(cert)
 	listener, err := tls.Listen("tcp", info.Address, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "bind API address")

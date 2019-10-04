@@ -10,25 +10,30 @@ import (
 	"github.com/pkg/errors"
 )
 
-// LoadTLS loads the cluster TLS configuration.
-func LoadTLS(dir string) (tls.Certificate, *x509.CertPool, error) {
+type Cert struct {
+	KeyPair tls.Certificate
+	Pool    *x509.CertPool
+}
+
+// LoadCert loads the cluster TLS certificates.
+func LoadCert(dir string) (*Cert, error) {
 	crt := filepath.Join(dir, "cluster.crt")
 	key := filepath.Join(dir, "cluster.key")
 
 	keypair, err := tls.LoadX509KeyPair(crt, key)
 	if err != nil {
-		return tls.Certificate{}, nil, errors.Wrap(err, "load keypair")
+		return nil, errors.Wrap(err, "load keypair")
 	}
 
 	data, err := ioutil.ReadFile(crt)
 	if err != nil {
-		return tls.Certificate{}, nil, errors.Wrap(err, "read certificate")
+		return nil, errors.Wrap(err, "read certificate")
 	}
 
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(data) {
-		return tls.Certificate{}, nil, fmt.Errorf("bad certificate")
+		return nil, fmt.Errorf("bad certificate")
 	}
 
-	return keypair, pool, nil
+	return &Cert{KeyPair: keypair, Pool: pool}, nil
 }
