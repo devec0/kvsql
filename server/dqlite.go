@@ -2,57 +2,15 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"net"
 	"net/http"
 
 	"github.com/canonical/go-dqlite/client"
+	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
 )
 
-func startDqliteProxy(conns chan net.Conn, addr string) *dqliteProxy {
-	proxy := &dqliteProxy{conns: conns, addr: addr}
-	go proxy.Start()
-	return proxy
-}
-
-type dqliteProxy struct {
-	conns chan net.Conn
-	addr  string
-}
-
-func (p *dqliteProxy) Start() {
-	for {
-		src, ok := <-p.conns
-		if !ok {
-			break
-		}
-		dst, err := net.Dial("unix", p.addr)
-		if err != nil {
-			continue
-		}
-		go func() {
-			_, err := io.Copy(dst, src)
-			if err != nil {
-				fmt.Printf("Dqlite server proxy TLS -> Unix: %v\n", err)
-			}
-			src.Close()
-			dst.Close()
-		}()
-
-		go func() {
-			_, err := io.Copy(src, dst)
-			if err != nil {
-				fmt.Printf("Dqlite server proxy Unix -> TLS: %v\n", err)
-			}
-			src.Close()
-			dst.Close()
-		}()
-	}
-}
-
-func makeDqliteHandler(conns chan net.Conn) http.HandlerFunc {
+func makeDqliteHandler(addr string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Upgrade") != "dqlite" {
 			http.Error(w, "Missing or invalid upgrade header", http.StatusBadRequest)
@@ -65,7 +23,7 @@ func makeDqliteHandler(conns chan net.Conn) http.HandlerFunc {
 			return
 		}
 
-		conn, _, err := hijacker.Hijack()
+		tlsConn, _, err := hijacker.Hijack()
 		if err != nil {
 			message := errors.Wrap(err, "Failed to hijack connection").Error()
 			http.Error(w, message, http.StatusInternalServerError)
@@ -75,12 +33,17 @@ func makeDqliteHandler(conns chan net.Conn) http.HandlerFunc {
 		// Write the status line and upgrade header by hand since w.WriteHeader()
 		// would fail after Hijack()
 		data := []byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: dqlite\r\n\r\n")
-		if n, err := conn.Write(data); err != nil || n != len(data) {
-			conn.Close()
+		if n, err := tlsConn.Write(data); err != nil || n != len(data) {
+			tlsConn.Close()
 			return
 		}
 
-		conns <- conn
+		unixConn, err := net.Dial("unix", addr)
+		if err != nil {
+			panic("dqlite node is not listening to the given Unix socket")
+		}
+
+		transport.Proxy(tlsConn, unixConn)
 	}
 }
 

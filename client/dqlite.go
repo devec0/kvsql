@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +13,7 @@ import (
 	"github.com/canonical/go-dqlite/client"
 	"github.com/canonical/go-dqlite/driver"
 	"github.com/freeekanayaka/kvsql/config"
+	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
 )
 
@@ -40,17 +40,17 @@ func DialFunc(cert *config.Cert) client.DialFunc {
 		request.Header.Set("Upgrade", "dqlite")
 		request = request.WithContext(ctx)
 
-		conn, err := dial(ctx, cert, addr)
+		tlsConn, err := transport.Dial(ctx, cert, addr)
 		if err != nil {
 			return nil, errors.Wrap(err, "connect to HTTP endpoint")
 		}
 
-		err = request.Write(conn)
+		err = request.Write(tlsConn)
 		if err != nil {
 			return nil, errors.Wrap(err, "HTTP request failed")
 		}
 
-		response, err := http.ReadResponse(bufio.NewReader(conn), request)
+		response, err := http.ReadResponse(bufio.NewReader(tlsConn), request)
 		if err != nil {
 			return nil, errors.Wrap(err, "read response")
 		}
@@ -61,40 +61,12 @@ func DialFunc(cert *config.Cert) client.DialFunc {
 			return nil, fmt.Errorf("missing or unexpected Upgrade header in response")
 		}
 
-		listener, err := net.Listen("unix", "")
+		goUnix, cUnix, err := transport.Socketpair()
 		if err != nil {
-			return nil, errors.Wrap(err, "Failed to create unix listener")
+			return nil, errors.Wrap(err, "create pair of Unix sockets")
 		}
 
-		goUnix, err := net.Dial("unix", listener.Addr().String())
-		if err != nil {
-			return nil, errors.Wrap(err, "Failed to connect to unix listener")
-		}
-
-		cUnix, err := listener.Accept()
-		if err != nil {
-			return nil, errors.Wrap(err, "Failed to connect to unix listener")
-		}
-
-		listener.Close()
-
-		go func() {
-			_, err := io.Copy(goUnix, conn)
-			if err != nil {
-				fmt.Printf("Dqlite client proxy TLS -> Unix: %v\n", err)
-			}
-			goUnix.Close()
-			conn.Close()
-		}()
-
-		go func() {
-			_, err := io.Copy(conn, goUnix)
-			if err != nil {
-				fmt.Printf("Dqlite client proxy Unix -> TLS: %v\n", err)
-			}
-			conn.Close()
-			goUnix.Close()
-		}()
+		transport.Proxy(goUnix, tlsConn)
 
 		return cUnix, nil
 	}

@@ -2,9 +2,7 @@ package server
 
 import (
 	"context"
-	"crypto/tls"
 	"database/sql"
-	"net"
 	"net/http"
 	"time"
 
@@ -12,6 +10,7 @@ import (
 	"github.com/canonical/go-dqlite/client"
 	kvsqlclient "github.com/freeekanayaka/kvsql/client"
 	"github.com/freeekanayaka/kvsql/config"
+	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
 )
 
@@ -94,10 +93,9 @@ func New(dir string) (*Server, error) {
 		}
 	}
 
-	cfg := newTLSServerConfig(cert)
-	listener, err := tls.Listen("tcp", info.Address, cfg)
+	listener, err := transport.Listen(info.Address, cert)
 	if err != nil {
-		return nil, errors.Wrap(err, "bind API address")
+		return nil, err
 	}
 
 	node, err := dqlite.New(
@@ -109,19 +107,14 @@ func New(dir string) (*Server, error) {
 		return nil, errors.Wrap(err, "start dqlite node")
 	}
 
-	conns := make(chan net.Conn)
-
-	startDqliteProxy(conns, node.BindAddress())
-
 	mux := http.NewServeMux()
-	mux.HandleFunc("/dqlite", makeDqliteHandler(conns))
+	mux.HandleFunc("/dqlite", makeDqliteHandler(node.BindAddress()))
 	api := &http.Server{Handler: mux}
 
 	go func() {
 		if err := api.Serve(listener); err != http.ErrServerClosed {
 			panic(err)
 		}
-		close(conns)
 	}()
 
 	db, err := sql.Open(name, "k8s")
