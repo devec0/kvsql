@@ -27,6 +27,7 @@ var schema = []string{
 	`CREATE TABLE revision (
            id INTEGER PRIMARY KEY AUTOINCREMENT,
            t TEXT)`,
+	`INSERT INTO revision(t) VALUES(NULL)`, // Initial revision will be 1
 }
 
 // CreateSchema initializes the database schema.
