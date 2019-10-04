@@ -2,30 +2,17 @@ package server
 
 import (
 	"crypto/tls"
-	"crypto/x509"
-	"io/ioutil"
-	"path/filepath"
 
+	"github.com/freeekanayaka/kvsql/config"
 	"github.com/pkg/errors"
 )
 
 // See https://github.com/denji/golang-tls
 func newTLSServerConfig(dir string) (*tls.Config, error) {
-	crt := filepath.Join(dir, "cluster.crt")
-	key := filepath.Join(dir, "cluster.key")
-
-	certificate, err := tls.LoadX509KeyPair(crt, key)
+	keypair, pool, err := config.LoadTLS(dir)
 	if err != nil {
-		return nil, errors.Wrap(err, "load cluster TLS certificate")
+		return nil, errors.Wrap(err, "load TLS configuration")
 	}
-
-	// Create a CA certificate pool and add cluster.crt to it
-	data, err := ioutil.ReadFile(crt)
-	if err != nil {
-		return nil, errors.Wrap(err, "read cluster certificate")
-	}
-	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(data)
 
 	cfg := &tls.Config{
 		MinVersion:               tls.VersionTLS12,
@@ -37,7 +24,7 @@ func newTLSServerConfig(dir string) (*tls.Config, error) {
 			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
 		},
-		Certificates: []tls.Certificate{certificate},
+		Certificates: []tls.Certificate{keypair},
 		ClientCAs:    pool,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 	}
@@ -48,26 +35,15 @@ func newTLSServerConfig(dir string) (*tls.Config, error) {
 
 // See https://venilnoronha.io/a-step-by-step-guide-to-mtls-in-go
 func newTLSClientConfig(dir string) (*tls.Config, error) {
-	crt := filepath.Join(dir, "cluster.crt")
-	key := filepath.Join(dir, "cluster.key")
-
-	certificate, err := tls.LoadX509KeyPair(crt, key)
+	keypair, pool, err := config.LoadTLS(dir)
 	if err != nil {
-		return nil, errors.Wrap(err, "load cluster TLS certificate")
+		return nil, errors.Wrap(err, "load TLS configuration")
 	}
-
-	// Create a CA certificate pool and add cluster.crt to it
-	data, err := ioutil.ReadFile(crt)
-	if err != nil {
-		return nil, errors.Wrap(err, "read cluster certificate")
-	}
-	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(data)
 
 	// Create a HTTPS client and supply the created CA pool
 	cfg := &tls.Config{
 		RootCAs:      pool,
-		Certificates: []tls.Certificate{certificate},
+		Certificates: []tls.Certificate{keypair},
 	}
 	return cfg, nil
 }
