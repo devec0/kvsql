@@ -12,6 +12,7 @@ import (
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/client"
 	"github.com/canonical/go-dqlite/driver"
+	"github.com/freeekanayaka/kvsql/config"
 	"github.com/pkg/errors"
 )
 
@@ -25,7 +26,7 @@ type Server struct {
 
 func New(dir string) (*Server, error) {
 	// Check if we're initializing a new node (i.e. there's an init.yaml).
-	init, err := maybeLoadInit(dir)
+	init, err := config.LoadInit(dir)
 	if err != nil {
 		return nil, err
 	}

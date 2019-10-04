@@ -7,13 +7,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/freeekanayaka/kvsql/config"
 	"github.com/freeekanayaka/kvsql/server"
 	"github.com/ghodss/yaml"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNew_FirstNode_Init(t *testing.T) {
-	init := &server.Init{Address: "localhost:9991"}
+	init := &config.Init{Address: "localhost:9991"}
 	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
 
@@ -24,7 +25,7 @@ func TestNew_FirstNode_Init(t *testing.T) {
 }
 
 func TestNew_FirstNode_Restart(t *testing.T) {
-	init := &server.Init{Address: "localhost:9991"}
+	init := &config.Init{Address: "localhost:9991"}
 	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
 
@@ -40,14 +41,14 @@ func TestNew_FirstNode_Restart(t *testing.T) {
 }
 
 func TestNew_SecondNode_Init(t *testing.T) {
-	init1 := &server.Init{Address: "localhost:9991"}
+	init1 := &config.Init{Address: "localhost:9991"}
 	dir1, cleanup1 := newDirWithInit(t, init1)
 	defer cleanup1()
 
 	s1, err := server.New(dir1)
 	require.NoError(t, err)
 
-	init2 := &server.Init{Address: "localhost:9992", Cluster: []string{"localhost:9991"}}
+	init2 := &config.Init{Address: "localhost:9992", Cluster: []string{"localhost:9991"}}
 	dir2, cleanup2 := newDirWithInit(t, init2)
 	defer cleanup2()
 
@@ -60,7 +61,7 @@ func TestNew_SecondNode_Init(t *testing.T) {
 
 // Return a new temporary directory populated with the test cluster certificate
 // and an init.yaml file with the given content.
-func newDirWithInit(t *testing.T, init *server.Init) (string, func()) {
+func newDirWithInit(t *testing.T, init *config.Init) (string, func()) {
 	dir, cleanup := newDirWithCert(t)
 
 	path := filepath.Join(dir, "init.yaml")
