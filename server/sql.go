@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/canonical/go-dqlite"
 	"github.com/pkg/errors"
 )
 
@@ -21,9 +20,9 @@ CREATE TABLE servers (
 	return nil
 }
 
-func insertServer(ctx context.Context, db *sql.DB, info dqlite.NodeInfo) error {
+func insertServer(ctx context.Context, db *sql.DB, id uint64, address string) error {
 	stmt := "INSERT INTO servers(id, address) VALUES(?, ?)"
-	if _, err := db.ExecContext(ctx, stmt, info.ID, info.Address); err != nil {
+	if _, err := db.ExecContext(ctx, stmt, id, address); err != nil {
 		return errors.Wrap(err, "insert new server")
 	}
 	return nil

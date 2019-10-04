@@ -23,13 +23,13 @@ type Server struct {
 
 func New(dir string) (*Server, error) {
 	// Check if we're initializing a new node (i.e. there's an init.yaml).
-	config, err := config.Load(dir)
+	cfg, err := config.Load(dir)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create the dqlite dial function and driver now, we might need it below to join.
-	name, err := dqliteDriver(config.Store, config.Cert)
+	name, err := dqliteDriver(cfg.Store, cfg.Cert)
 	if err != nil {
 		return nil, err
 	}
@@ -37,22 +37,21 @@ func New(dir string) (*Server, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	info := dqlite.NodeInfo{}
-	if config.Init != nil {
-		info.Address = config.Init.Address
-		if len(config.Init.Cluster) == 0 {
+	if cfg.Init != nil {
+		cfg.Address = cfg.Init.Address
+		if len(cfg.Init.Cluster) == 0 {
 			// This is the first node of a new cluster.
-			info.ID = 1
-			if err := config.Store.Set(context.Background(), []client.NodeInfo{info}); err != nil {
+			cfg.ID = 1
+			if err := cfg.Store.Set(context.Background(), []client.NodeInfo{{ID: cfg.ID, Address: cfg.Address}}); err != nil {
 				return nil, errors.Wrap(err, "initialize node store")
 			}
 		} else {
-			servers := make([]client.NodeInfo, len(config.Init.Cluster))
-			for i, address := range config.Init.Cluster {
+			servers := make([]client.NodeInfo, len(cfg.Init.Cluster))
+			for i, address := range cfg.Init.Cluster {
 				servers[i].ID = uint64(i + 1) // The ID isn't really used
 				servers[i].Address = address
 			}
-			if err := config.Store.Set(context.Background(), servers); err != nil {
+			if err := cfg.Store.Set(context.Background(), servers); err != nil {
 				return nil, errors.Wrap(err, "initialize node store")
 			}
 			// Figure out our ID.
@@ -64,26 +63,19 @@ func New(dir string) (*Server, error) {
 			if err != nil {
 				return nil, err
 			}
-			info.ID = id + 1
+			cfg.ID = id + 1
 		}
-		if err := writeInfo(dir, info); err != nil {
-			return nil, err
-		}
-		if err := rmInit(dir); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := loadInfo(dir, &info); err != nil {
+		if err := cfg.Save(dir); err != nil {
 			return nil, err
 		}
 	}
 
-	listener, err := transport.Listen(info.Address, config.Cert)
+	listener, err := transport.Listen(cfg.Address, cfg.Cert)
 	if err != nil {
 		return nil, err
 	}
 
-	node, err := dqliteNode(info.ID, info.Address, dir, config.Cert)
+	node, err := dqliteNode(cfg.ID, cfg.Address, dir, cfg.Cert)
 	if err != nil {
 		return nil, err
 	}
@@ -105,17 +97,17 @@ func New(dir string) (*Server, error) {
 
 	// If we are initializing a new node, update the cluster state
 	// accordingly.
-	if config.Init != nil {
-		if len(config.Init.Cluster) == 0 {
+	if cfg.Init != nil {
+		if len(cfg.Init.Cluster) == 0 {
 			if err := createServersTable(ctx, db); err != nil {
 				return nil, err
 			}
 		} else {
-			if err := dqliteAdd(ctx, info.ID, info.Address, config.Store, config.Cert); err != nil {
+			if err := dqliteAdd(ctx, cfg.ID, cfg.Address, cfg.Store, cfg.Cert); err != nil {
 				return nil, err
 			}
 		}
-		if err := insertServer(ctx, db, info); err != nil {
+		if err := insertServer(ctx, db, cfg.ID, cfg.Address); err != nil {
 			return nil, err
 		}
 	}

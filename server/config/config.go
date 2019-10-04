@@ -1,15 +1,20 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/canonical/go-dqlite/client"
 	"github.com/freeekanayaka/kvsql/transport"
 )
 
 // Config holds the server configuraton loaded from disk.
 type Config struct {
-	Cert  *transport.Cert  // TLS configuration
-	Init  *Init            // Initialization parameters, for new servers.
-	Store client.NodeStore // Hold members of the dqlite cluster
+	Cert    *transport.Cert  // TLS configuration
+	Init    *Init            // Initialization parameters, for new servers.
+	Store   client.NodeStore // Hold members of the dqlite cluster
+	ID      uint64           // Server ID
+	Address string           // Server address
 }
 
 // Load current the configuration from disk.
@@ -33,11 +38,33 @@ func Load(dir string) (*Config, error) {
 		return nil, err
 	}
 
+	id := uint64(0)
+	address := ""
+	if init == nil {
+		id, address, err = loadInfo(dir)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	config := &Config{
-		Init:  init,
-		Store: store,
-		Cert:  cert,
+		Init:    init,
+		Store:   store,
+		Cert:    cert,
+		ID:      id,
+		Address: address,
 	}
 
 	return config, nil
+}
+
+// Save the configuration to disk.
+func (c *Config) Save(dir string) error {
+	if err := saveInfo(c.ID, c.Address, dir); err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(dir, "init.yaml")); err != nil {
+		return err
+	}
+	return nil
 }
