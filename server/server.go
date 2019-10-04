@@ -1,16 +1,20 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/client"
 	"github.com/canonical/go-dqlite/driver"
+	"github.com/freeekanayaka/kvsql/pkg/broadcast"
+	"github.com/freeekanayaka/kvsql/server/api"
 	"github.com/freeekanayaka/kvsql/server/config"
 	"github.com/freeekanayaka/kvsql/server/db"
 	"github.com/freeekanayaka/kvsql/transport"
@@ -19,10 +23,12 @@ import (
 
 // Server sets up a single dqlite node and serves the cluster management API.
 type Server struct {
-	dir  string       // Data directory
-	api  *http.Server // API server
-	node *dqlite.Node // Dqlite node
-	db   *db.DB       // Database connection
+	dir           string       // Data directory
+	api           *http.Server // API server
+	node          *dqlite.Node // Dqlite node
+	db            *db.DB       // Database connection
+	changes       chan *db.KeyValue
+	cancelWatcher context.CancelFunc
 }
 
 func New(dir string) (*Server, error) {
@@ -40,6 +46,8 @@ func New(dir string) (*Server, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	changes := make(chan *db.KeyValue, 1024)
 
 	// It's safe to open the database object now, since no connection will
 	// be attempted until we actually make use of it.
@@ -63,8 +71,35 @@ func New(dir string) (*Server, error) {
 		return nil, err
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/dqlite", makeDqliteHandler(node.BindAddress()))
+	broadcaster := &broadcast.Broadcaster{}
+	var cancelWatcher context.CancelFunc
+	globalWatcher := func() (chan map[string]interface{}, error) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancelWatcher = cancel
+		result := make(chan map[string]interface{}, 100)
+
+		go func() {
+			defer close(result)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case e := <-changes:
+					result <- map[string]interface{}{
+						"data": e,
+					}
+				}
+			}
+		}()
+
+		return result, nil
+	}
+
+	subscribe := func(ctx context.Context) (chan map[string]interface{}, error) {
+		return broadcaster.Subscribe(ctx, globalWatcher)
+	}
+
+	mux := api.New(node.BindAddress(), db, changes, subscribe)
 	api := &http.Server{Handler: mux}
 
 	if err := startAPI(cfg, api); err != nil {
@@ -80,10 +115,12 @@ func New(dir string) (*Server, error) {
 	}
 
 	s := &Server{
-		dir:  dir,
-		api:  api,
-		node: node,
-		db:   db,
+		dir:           dir,
+		api:           api,
+		node:          node,
+		db:            db,
+		changes:       changes,
+		cancelWatcher: cancelWatcher,
 	}
 
 	return s, nil
@@ -91,7 +128,7 @@ func New(dir string) (*Server, error) {
 
 // Register a new Dqlite driver and return the registration name.
 func registerDriver(cfg *config.Config) (string, error) {
-	dial := dqliteDial(cfg.Cert)
+	dial := dqliteDialFunc(cfg.Cert)
 	timeout := 10 * time.Second
 	driver, err := driver.New(
 		cfg.Store, driver.WithDialFunc(dial),
@@ -158,7 +195,7 @@ func newNode(cfg *config.Config, dir string) (*dqlite.Node, error) {
 	// connection, since the raft connect function only supports Unix and
 	// TCP connections.
 	dial := func(ctx context.Context, addr string) (net.Conn, error) {
-		dial := dqliteDial(cfg.Cert)
+		dial := dqliteDialFunc(cfg.Cert)
 		tlsConn, err := dial(ctx, addr)
 		if err != nil {
 			return nil, err
@@ -217,7 +254,7 @@ func initServer(ctx context.Context, cfg *config.Config, db *db.DB) error {
 
 // Make this node join an existing dqlite cluster.
 func joinCluster(ctx context.Context, cfg *config.Config) error {
-	dial := dqliteDial(cfg.Cert)
+	dial := dqliteDialFunc(cfg.Cert)
 	info := client.NodeInfo{ID: cfg.ID, Address: cfg.Address}
 	client, err := client.FindLeader(ctx, cfg.Store, client.WithDialFunc(dial))
 	if err != nil {
@@ -230,7 +267,58 @@ func joinCluster(ctx context.Context, cfg *config.Config) error {
 	return nil
 }
 
+// Returns a dqlite dial function that will establish the connection
+// using the target server's /dqlite HTTP endpoint.
+func dqliteDialFunc(cert *transport.Cert) client.DialFunc {
+	return func(ctx context.Context, addr string) (net.Conn, error) {
+		request := &http.Request{
+			Method:     "POST",
+			Proto:      "HTTP/1.1",
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Header:     make(http.Header),
+			Host:       addr,
+		}
+		path := fmt.Sprintf("https://%s/dqlite", addr)
+
+		var err error
+		request.URL, err = url.Parse(path)
+		if err != nil {
+			return nil, err
+		}
+
+		request.Header.Set("Upgrade", "dqlite")
+		request = request.WithContext(ctx)
+
+		conn, err := transport.Dial(ctx, cert, addr)
+		if err != nil {
+			return nil, errors.Wrap(err, "connect to HTTP endpoint")
+		}
+
+		err = request.Write(conn)
+		if err != nil {
+			return nil, errors.Wrap(err, "HTTP request failed")
+		}
+
+		response, err := http.ReadResponse(bufio.NewReader(conn), request)
+		if err != nil {
+			return nil, errors.Wrap(err, "read response")
+		}
+		if response.StatusCode != http.StatusSwitchingProtocols {
+			return nil, fmt.Errorf("expected status code 101 got %d", response.StatusCode)
+		}
+		if response.Header.Get("Upgrade") != "dqlite" {
+			return nil, fmt.Errorf("missing or unexpected Upgrade header in response")
+		}
+
+		return conn, nil
+	}
+}
+
 func (s *Server) Close(ctx context.Context) error {
+	if s.cancelWatcher != nil {
+		s.cancelWatcher()
+	}
 	if err := s.db.Close(); err != nil {
 		return err
 	}
