@@ -3,13 +3,16 @@ package client
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/canonical/go-dqlite/client"
+	"github.com/canonical/go-dqlite/driver"
 	"github.com/freeekanayaka/kvsql/config"
 	"github.com/pkg/errors"
 )
@@ -96,3 +99,26 @@ func DialFunc(cert *config.Cert) client.DialFunc {
 		return cUnix, nil
 	}
 }
+
+// Register a new Dqlite driver and return the registration name.
+func RegisterDriver(store client.NodeStore, dial client.DialFunc) (string, error) {
+	timeout := 10 * time.Second
+	driver, err := driver.New(
+		store, driver.WithDialFunc(dial),
+		driver.WithConnectionTimeout(timeout),
+		driver.WithContextTimeout(timeout),
+	)
+	if err != nil {
+		return "", errors.Wrap(err, "create dqlite driver")
+	}
+
+	// Create a unique name to pass to sql.Register.
+	driverIndex++
+	name := fmt.Sprintf("dqlite-%d", driverIndex)
+
+	sql.Register(name, driver)
+
+	return name, nil
+}
+
+var driverIndex = 0

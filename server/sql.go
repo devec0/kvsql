@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"github.com/canonical/go-dqlite"
 	"github.com/pkg/errors"
@@ -40,11 +39,3 @@ func queryMaxServerID(ctx context.Context, db *sql.DB) (uint64, error) {
 	}
 	return id, nil
 }
-
-// Create a unique name to pass to sql.Register.
-func makeDriverName() string {
-	driverIndex++
-	return fmt.Sprintf("dqlite-%d", driverIndex)
-}
-
-var driverIndex = 0

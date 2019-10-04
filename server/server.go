@@ -10,7 +10,6 @@ import (
 
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/driver"
 	kvsqlclient "github.com/freeekanayaka/kvsql/client"
 	"github.com/freeekanayaka/kvsql/config"
 	"github.com/pkg/errors"
@@ -46,16 +45,10 @@ func New(dir string) (*Server, error) {
 
 	// Create the dqlite dial function and driver now, we might need it below to join.
 	dial := kvsqlclient.DialFunc(cert)
-	driver, err := driver.New(
-		store, driver.WithDialFunc(dial),
-		driver.WithConnectionTimeout(10*time.Second),
-		driver.WithContextTimeout(10*time.Second),
-	)
+	name, err := kvsqlclient.RegisterDriver(store, dial)
 	if err != nil {
-		return nil, errors.Wrap(err, "create dqlite driver")
+		return nil, err
 	}
-	name := makeDriverName()
-	sql.Register(name, driver)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -144,16 +137,10 @@ func New(dir string) (*Server, error) {
 				return nil, err
 			}
 		} else {
-			client, err := client.FindLeader(ctx, store, client.WithDialFunc(dial))
-			if err != nil {
-				return nil, errors.Wrap(err, "find leader")
-			}
-			defer client.Close()
-			if err := client.Add(ctx, info); err != nil {
-				return nil, errors.Wrap(err, "join cluster")
+			if err := addNode(ctx, store, dial, info.ID, info.Address); err != nil {
+				return nil, err
 			}
 		}
-
 		if err := insertServer(ctx, db, info); err != nil {
 			return nil, err
 		}

@@ -1,11 +1,13 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 
+	"github.com/canonical/go-dqlite/client"
 	"github.com/pkg/errors"
 )
 
@@ -80,4 +82,17 @@ func makeDqliteHandler(conns chan net.Conn) http.HandlerFunc {
 
 		conns <- conn
 	}
+}
+
+func addNode(ctx context.Context, store client.NodeStore, dial client.DialFunc, id uint64, address string) error {
+	info := client.NodeInfo{ID: id, Address: address}
+	client, err := client.FindLeader(ctx, store, client.WithDialFunc(dial))
+	if err != nil {
+		return errors.Wrap(err, "find leader")
+	}
+	defer client.Close()
+	if err := client.Add(ctx, info); err != nil {
+		return errors.Wrap(err, "join cluster")
+	}
+	return nil
 }
