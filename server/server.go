@@ -43,7 +43,7 @@ func New(dir string) (*Server, error) {
 
 	// It's safe to open the database object now, since no connection will
 	// be attempted until we actually make use of it.
-	db, err := db.Open(driver)
+	db, err := db.Open(driver, "k8s")
 	if err != nil {
 		return nil, errors.Wrap(err, "open cluster database")
 	}

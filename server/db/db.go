@@ -10,8 +10,8 @@ type DB struct {
 	db *sql.DB
 }
 
-func Open(driver string) (*DB, error) {
-	db, err := sql.Open(driver, "k8s")
+func Open(driver string, dsn string) (*DB, error) {
+	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		return nil, errors.Wrap(err, "open cluster database")
 	}
