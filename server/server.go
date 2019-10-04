@@ -8,7 +8,7 @@ import (
 
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/client"
-	"github.com/freeekanayaka/kvsql/config"
+	"github.com/freeekanayaka/kvsql/server/config"
 	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
 )

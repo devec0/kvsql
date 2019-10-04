@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/freeekanayaka/kvsql/config"
 	"github.com/freeekanayaka/kvsql/server"
+	"github.com/freeekanayaka/kvsql/server/config"
 	"github.com/ghodss/yaml"
 	"github.com/stretchr/testify/require"
 )
