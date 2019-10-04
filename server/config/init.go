@@ -23,7 +23,7 @@ var initialFilenames = []string{
 }
 
 // LoadInit load init.yaml if present, or return nil otherwise.
-func LoadInit(dir string) (*Init, error) {
+func loadInit(dir string) (*Init, error) {
 	path := filepath.Join(dir, "init.yaml")
 
 	if _, err := os.Stat(path); err != nil {
