@@ -8,7 +8,6 @@ import (
 
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/client"
-	kvsqlclient "github.com/freeekanayaka/kvsql/client"
 	"github.com/freeekanayaka/kvsql/config"
 	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
@@ -43,8 +42,7 @@ func New(dir string) (*Server, error) {
 	}
 
 	// Create the dqlite dial function and driver now, we might need it below to join.
-	dial := kvsqlclient.DialFunc(cert)
-	name, err := kvsqlclient.RegisterDriver(store, dial)
+	name, err := dqliteDriver(store, cert)
 	if err != nil {
 		return nil, err
 	}
@@ -98,13 +96,9 @@ func New(dir string) (*Server, error) {
 		return nil, err
 	}
 
-	node, err := dqlite.New(
-		info.ID, info.Address, dir, dqlite.WithBindAddress("@"), dqlite.WithDialFunc(dial))
+	node, err := dqliteNode(info.ID, info.Address, dir, cert)
 	if err != nil {
-		return nil, errors.Wrap(err, "create dqlite node")
-	}
-	if err := node.Start(); err != nil {
-		return nil, errors.Wrap(err, "start dqlite node")
+		return nil, err
 	}
 
 	mux := http.NewServeMux()
@@ -130,6 +124,7 @@ func New(dir string) (*Server, error) {
 				return nil, err
 			}
 		} else {
+			dial := dqliteDial(cert)
 			if err := addNode(ctx, store, dial, info.ID, info.Address); err != nil {
 				return nil, err
 			}
