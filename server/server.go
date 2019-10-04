@@ -12,6 +12,7 @@ import (
 	"github.com/canonical/go-dqlite/client"
 	"github.com/canonical/go-dqlite/driver"
 	"github.com/freeekanayaka/kvsql/server/config"
+	"github.com/freeekanayaka/kvsql/server/db"
 	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
 )
@@ -21,7 +22,7 @@ type Server struct {
 	dir  string       // Data directory
 	api  *http.Server // API server
 	node *dqlite.Node // Dqlite node
-	db   *sql.DB      // Database connection
+	db   *db.DB       // Database connection
 }
 
 func New(dir string) (*Server, error) {
@@ -32,7 +33,7 @@ func New(dir string) (*Server, error) {
 	}
 
 	// Create the dqlite dial function and driver now, we might need it below to join.
-	name, err := registerDriver(cfg)
+	driver, err := registerDriver(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +43,7 @@ func New(dir string) (*Server, error) {
 
 	// It's safe to open the database object now, since no connection will
 	// be attempted until we actually make use of it.
-	db, err := sql.Open(name, "k8s")
+	db, err := db.Open(driver)
 	if err != nil {
 		return nil, errors.Wrap(err, "open cluster database")
 	}
@@ -114,7 +115,7 @@ var driverIndex = 0
 
 // Initializes the configuration according to the content of the init.yaml
 // file, possibly obtaining a new node ID.
-func initConfig(ctx context.Context, cfg *config.Config, db *sql.DB) error {
+func initConfig(ctx context.Context, cfg *config.Config, db *db.DB) error {
 	servers := []client.NodeInfo{}
 
 	if len(cfg.Init.Cluster) == 0 {
@@ -139,7 +140,7 @@ func initConfig(ctx context.Context, cfg *config.Config, db *sql.DB) error {
 		cfg.ID = 1
 	} else {
 		// Figure out our ID.
-		id, err := queryMaxServerID(ctx, db)
+		id, err := db.MaxServerID(ctx)
 		if err != nil {
 			return err
 		}
@@ -198,9 +199,9 @@ func startAPI(cfg *config.Config, api *http.Server) error {
 	return nil
 }
 
-func initServer(ctx context.Context, cfg *config.Config, db *sql.DB) error {
+func initServer(ctx context.Context, cfg *config.Config, db *db.DB) error {
 	if len(cfg.Init.Cluster) == 0 {
-		if err := createServersTable(ctx, db); err != nil {
+		if err := db.CreateSchema(ctx); err != nil {
 			return err
 		}
 	} else {
@@ -208,7 +209,7 @@ func initServer(ctx context.Context, cfg *config.Config, db *sql.DB) error {
 			return err
 		}
 	}
-	if err := insertServer(ctx, db, cfg.ID, cfg.Address); err != nil {
+	if err := db.AddServer(ctx, cfg.ID, cfg.Address); err != nil {
 		return err
 	}
 	return nil
@@ -229,13 +230,9 @@ func joinCluster(ctx context.Context, cfg *config.Config) error {
 	return nil
 }
 
-func (s *Server) DB() *sql.DB {
-	return s.db
-}
-
 func (s *Server) Close(ctx context.Context) error {
 	if err := s.db.Close(); err != nil {
-		return errors.Wrap(err, "close cluster database")
+		return err
 	}
 	if err := s.api.Shutdown(ctx); err != nil {
 		return errors.Wrap(err, "shutdown API server")
