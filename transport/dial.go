@@ -6,12 +6,11 @@ import (
 	"net"
 	"time"
 
-	"github.com/freeekanayaka/kvsql/config"
 	"github.com/pkg/errors"
 )
 
 // Dial establishes a secure connection with the given server.
-func Dial(ctx context.Context, cert *config.Cert, addr string) (net.Conn, error) {
+func Dial(ctx context.Context, cert *Cert, addr string) (net.Conn, error) {
 	deadline, _ := ctx.Deadline()
 	dialer := &net.Dialer{Timeout: time.Until(deadline)}
 

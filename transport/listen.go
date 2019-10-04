@@ -4,13 +4,12 @@ import (
 	"crypto/tls"
 	"net"
 
-	"github.com/freeekanayaka/kvsql/config"
 	"github.com/pkg/errors"
 )
 
 // Listen binds the given address and starts listening for incoming connections
 // using the given TLS certificates.
-func Listen(addr string, cert *config.Cert) (net.Listener, error) {
+func Listen(addr string, cert *Cert) (net.Listener, error) {
 	// See https://github.com/denji/golang-tls
 	cfg := &tls.Config{
 		MinVersion:               tls.VersionTLS12,

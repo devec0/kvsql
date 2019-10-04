@@ -13,14 +13,13 @@ import (
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/client"
 	"github.com/canonical/go-dqlite/driver"
-	"github.com/freeekanayaka/kvsql/config"
 	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
 )
 
 // Returns a dqlite dial function that will establish the connection
 // using the target server's /dqlite HTTP endpoint.
-func dqliteDial(cert *config.Cert) client.DialFunc {
+func dqliteDial(cert *transport.Cert) client.DialFunc {
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		request := &http.Request{
 			Method:     "POST",
@@ -67,7 +66,7 @@ func dqliteDial(cert *config.Cert) client.DialFunc {
 }
 
 // Register a new Dqlite driver and return the registration name.
-func dqliteDriver(store client.NodeStore, cert *config.Cert) (string, error) {
+func dqliteDriver(store client.NodeStore, cert *transport.Cert) (string, error) {
 	dial := dqliteDial(cert)
 	timeout := 10 * time.Second
 	driver, err := driver.New(
@@ -89,7 +88,7 @@ func dqliteDriver(store client.NodeStore, cert *config.Cert) (string, error) {
 }
 
 // Create a new dqlite node.
-func dqliteNode(id uint64, address string, dir string, cert *config.Cert) (*dqlite.Node, error) {
+func dqliteNode(id uint64, address string, dir string, cert *transport.Cert) (*dqlite.Node, error) {
 	// Wrap the regular dial function which one that also proxies the TLS
 	// connection, since the raft connect function only supports Unix and
 	// TCP connections.
@@ -160,7 +159,7 @@ func makeDqliteHandler(addr string) http.HandlerFunc {
 	}
 }
 
-func dqliteAdd(ctx context.Context, id uint64, address string, store client.NodeStore, cert *config.Cert) error {
+func dqliteAdd(ctx context.Context, id uint64, address string, store client.NodeStore, cert *transport.Cert) error {
 	dial := dqliteDial(cert)
 	info := client.NodeInfo{ID: id, Address: address}
 	client, err := client.FindLeader(ctx, store, client.WithDialFunc(dial))

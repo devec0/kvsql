@@ -36,7 +36,7 @@ func New(dir string) (*Server, error) {
 	}
 
 	// Load the TLS certificates.
-	cert, err := config.LoadCert(dir)
+	cert, err := transport.LoadCert(dir)
 	if err != nil {
 		return nil, err
 	}

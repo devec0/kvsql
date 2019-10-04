@@ -1,4 +1,4 @@
-package config
+package transport
 
 import (
 	"crypto/tls"
@@ -15,7 +15,7 @@ type Cert struct {
 	Pool    *x509.CertPool
 }
 
-// LoadCert loads the cluster TLS certificates.
+// LoadCert loads the cluster TLS certificates from the given directory.
 func LoadCert(dir string) (*Cert, error) {
 	crt := filepath.Join(dir, "cluster.crt")
 	key := filepath.Join(dir, "cluster.key")
