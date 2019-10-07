@@ -130,32 +130,7 @@ func (d *DB) Get(ctx context.Context, key string) (*KeyValue, error) {
 	return nil, nil
 }
 
-func (d *DB) Update(ctx context.Context, key string, value []byte, revision, ttl int64) (*KeyValue, *KeyValue, error) {
-	kv, err := d.mod(ctx, false, key, value, revision, ttl)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if kv.Version == 1 {
-		return nil, kv, nil
-	}
-
-	oldKv := *kv
-	oldKv.Revision = oldKv.OldRevision
-	oldKv.Value = oldKv.OldValue
-	return &oldKv, kv, nil
-}
-
-func (d *DB) Delete(ctx context.Context, key string, revision int64) ([]*KeyValue, error) {
-	if strings.HasSuffix(key, "%") {
-		panic("can not delete list revision")
-	}
-
-	_, err := d.mod(ctx, true, key, []byte{}, revision, 0)
-	return nil, err
-}
-
-func (d *DB) mod(ctx context.Context, delete bool, key string, value []byte, revision int64, ttl int64) (*KeyValue, error) {
+func (d *DB) Mod(ctx context.Context, delete bool, key string, value []byte, revision int64, ttl int64) (*KeyValue, error) {
 	oldKv, err := d.Get(ctx, key)
 	if err != nil {
 		return nil, err
@@ -217,12 +192,6 @@ func (d *DB) mod(ctx context.Context, delete bool, key string, value []byte, rev
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	if d.notify != nil {
-		if err := d.notify(result); err != nil {
-			return nil, err
-		}
 	}
 
 	return result, nil

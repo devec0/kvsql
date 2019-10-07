@@ -7,11 +7,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Notify func(*KeyValue) error
-
 type DB struct {
-	db     *sql.DB
-	notify Notify
+	db *sql.DB
 }
 
 func Open(driver string, dsn string) (*DB, error) {
@@ -20,12 +17,6 @@ func Open(driver string, dsn string) (*DB, error) {
 		return nil, errors.Wrap(err, "open cluster database")
 	}
 	return &DB{db: db}, nil
-}
-
-// Notify sets a notification function that gets called whenever a key gets
-// deleted or updated.
-func (d *DB) Notify(notify Notify) {
-	d.notify = notify
 }
 
 func (d *DB) Close() error {
