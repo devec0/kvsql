@@ -16,13 +16,14 @@ package clientv3
 
 import (
 	"bytes"
-	"database/sql"
 	"sync"
 
 	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/docker/docker/pkg/locker"
 	"github.com/freeekanayaka/kvsql/clientv3/driver"
+	"github.com/freeekanayaka/kvsql/db"
+	"github.com/freeekanayaka/kvsql/server"
 	"golang.org/x/net/context"
 )
 
@@ -80,23 +81,18 @@ func newKV(cfg Config) (*kv, error) {
 		return kv, nil
 	}
 
-	driver, err := driver.NewDQLite(cfg.Dir)
+	server, err := server.New(cfg.Dir)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	if err := driver.Start(ctx); err != nil {
-		return nil, err
-	}
+	driver := driver.New(server)
 
 	kv := &kv{
 		d: driver,
 	}
 	connection = kv
 	connectionClose = func() {
-		cancel()
 		driver.WaitStopped()
 	}
 
@@ -146,7 +142,7 @@ func (k *kv) opGet(ctx context.Context, op Op) (*GetResponse, error) {
 	return getResponse(kvs, rev, op.limit, op.countOnly), nil
 }
 
-func getPutResponse(oldValue *driver.KeyValue, value *driver.KeyValue) *PutResponse {
+func getPutResponse(oldValue *db.KeyValue, value *db.KeyValue) *PutResponse {
 	return &PutResponse{
 		Header: &pb.ResponseHeader{
 			Revision: value.Revision,
@@ -155,7 +151,7 @@ func getPutResponse(oldValue *driver.KeyValue, value *driver.KeyValue) *PutRespo
 	}
 }
 
-func toKeyValue(v *driver.KeyValue) *mvccpb.KeyValue {
+func toKeyValue(v *db.KeyValue) *mvccpb.KeyValue {
 	if v == nil {
 		return nil
 	}
@@ -170,7 +166,7 @@ func toKeyValue(v *driver.KeyValue) *mvccpb.KeyValue {
 	}
 }
 
-func getDeleteResponse(values []*driver.KeyValue) *DeleteResponse {
+func getDeleteResponse(values []*db.KeyValue) *DeleteResponse {
 	gr := getResponse(values, 0, 0, false)
 	return &DeleteResponse{
 		Header: &pb.ResponseHeader{
@@ -180,7 +176,7 @@ func getDeleteResponse(values []*driver.KeyValue) *DeleteResponse {
 	}
 }
 
-func getResponse(values []*driver.KeyValue, revision, limit int64, count bool) *GetResponse {
+func getResponse(values []*db.KeyValue, revision, limit int64, count bool) *GetResponse {
 	gr := &GetResponse{
 		Header: &pb.ResponseHeader{
 			Revision: revision,
@@ -238,18 +234,6 @@ func (k *kv) Txn(ctx context.Context) Txn {
 		kv:  k,
 		ctx: ctx,
 	}
-}
-
-func DB() *sql.DB {
-	connectionLock.Lock()
-	defer connectionLock.Unlock()
-
-	kv := connection
-	if kv == nil {
-		return nil
-	}
-
-	return kv.d.DB()
 }
 
 // Shutdown the dqlite engine, if it was started.

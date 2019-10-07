@@ -11,8 +11,11 @@ import (
 
 // Dial establishes a secure connection with the given server.
 func Dial(ctx context.Context, cert *Cert, addr string) (net.Conn, error) {
-	deadline, _ := ctx.Deadline()
-	dialer := &net.Dialer{Timeout: time.Until(deadline)}
+	// TODO: honor the given context's deadline
+	// deadline, _ := ctx.Deadline()
+	// timeout := time.Until(deadline)
+	timeout := 5 * time.Second
+	dialer := &net.Dialer{Timeout: timeout}
 
 	cfg := &tls.Config{
 		RootCAs:      cert.Pool,

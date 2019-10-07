@@ -23,10 +23,11 @@ import (
 
 // Server sets up a single dqlite node and serves the cluster management API.
 type Server struct {
-	dir           string       // Data directory
-	api           *http.Server // API server
-	node          *dqlite.Node // Dqlite node
-	db            *db.DB       // Database connection
+	dir           string          // Data directory
+	cert          *transport.Cert // TLS configuration
+	api           *http.Server    // API server
+	node          *dqlite.Node    // Dqlite node
+	db            *db.DB          // Database connection
 	changes       chan *db.KeyValue
 	cancelWatcher context.CancelFunc
 	cancelUpdater context.CancelFunc
@@ -93,10 +94,11 @@ func New(dir string) (*Server, error) {
 		}
 	}
 
-	cancelUpdater := startUpdater(db)
+	cancelUpdater := startUpdater(db, cfg.Store)
 
 	s := &Server{
 		dir:           dir,
+		cert:          cfg.Cert,
 		api:           api,
 		node:          node,
 		db:            db,
@@ -320,7 +322,7 @@ func globalWatcher(changes chan *db.KeyValue) (broadcast.ConnectFunc, context.Ca
 	return f, cancel
 }
 
-func startUpdater(db *db.DB) context.CancelFunc {
+func startUpdater(db *db.DB, store client.NodeStore) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		for {
@@ -330,6 +332,19 @@ func startUpdater(db *db.DB) context.CancelFunc {
 			case <-time.After(time.Minute):
 				if err := db.Cleanup(ctx); err != nil {
 					fmt.Println("Failed to purge expired TTL entries")
+				}
+			case <-time.After(5 * time.Second):
+				servers, err := db.GetServers(ctx)
+				if err != nil {
+					fmt.Printf("Failed to get servers: %v\n", err)
+
+				}
+				infos := make([]client.NodeInfo, len(servers))
+				for i, server := range servers {
+					infos[i].Address = server.Address
+				}
+				if err := store.Set(ctx, infos); err != nil {
+					fmt.Printf("Failed to update servers: %v\n", err)
 				}
 			}
 		}
@@ -356,6 +371,10 @@ func (s *Server) Leader(ctx context.Context) (string, error) {
 
 func (s *Server) DB() *db.DB {
 	return s.db
+}
+
+func (s *Server) Cert() *transport.Cert {
+	return s.cert
 }
 
 func (s *Server) Close(ctx context.Context) error {

@@ -24,3 +24,30 @@ func (d *DB) AddServer(ctx context.Context, id uint64, address string) error {
 	}
 	return nil
 }
+
+type Server struct {
+	ID      int64
+	Address string
+}
+
+func (d *DB) GetServers(ctx context.Context) ([]Server, error) {
+	servers := []Server{}
+	rows, err := d.db.QueryContext(ctx, "SELECT id, address FROM servers")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		server := Server{}
+		if err := rows.Scan(&server.ID, &server.Address); err != nil {
+			return nil, err
+		}
+		servers = append(servers, server)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return servers, nil
+}
