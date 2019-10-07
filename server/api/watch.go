@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	model "github.com/freeekanayaka/kvsql/server/db"
+	model "github.com/freeekanayaka/kvsql/db"
 	"github.com/pkg/errors"
 )
 

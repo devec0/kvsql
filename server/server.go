@@ -13,10 +13,10 @@ import (
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/client"
 	"github.com/canonical/go-dqlite/driver"
+	"github.com/freeekanayaka/kvsql/db"
 	"github.com/freeekanayaka/kvsql/pkg/broadcast"
 	"github.com/freeekanayaka/kvsql/server/api"
 	"github.com/freeekanayaka/kvsql/server/config"
-	"github.com/freeekanayaka/kvsql/server/db"
 	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
 )

@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/freeekanayaka/kvsql/server/db"
+	"github.com/freeekanayaka/kvsql/db"
 )
 
 func New(localNodeAddress string, db *db.DB, changes chan *db.KeyValue, subscribe SubcribeFunc) http.Handler {

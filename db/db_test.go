@@ -6,7 +6,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/freeekanayaka/kvsql/server/db"
+	"github.com/freeekanayaka/kvsql/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
