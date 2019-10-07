@@ -337,6 +337,27 @@ func startUpdater(db *db.DB) context.CancelFunc {
 	return cancel
 }
 
+func (s *Server) Leader(ctx context.Context) (string, error) {
+	client, err := client.New(ctx, s.node.BindAddress())
+	if err != nil {
+		return "", errors.Wrap(err, "connect to dqlite node")
+	}
+	defer client.Close()
+
+	info, err := client.Leader(ctx)
+	if err != nil {
+		return "", errors.Wrap(err, "get leader")
+	}
+	if info == nil {
+		return "", fmt.Errorf("no leader found")
+	}
+	return info.Address, nil
+}
+
+func (s *Server) DB() *db.DB {
+	return s.db
+}
+
 func (s *Server) Close(ctx context.Context) error {
 	s.cancelUpdater()
 	if s.cancelWatcher != nil {
