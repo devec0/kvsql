@@ -199,6 +199,10 @@ func (d *DB) Mod(ctx context.Context, delete bool, key string, value []byte, rev
 
 func (d *DB) Cleanup(ctx context.Context) error {
 	return d.tx(func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, cleanupSQL, time.Now().Unix()); err != nil {
+			return err
+		}
+
 		rows, err := tx.QueryContext(ctx, toDeleteSQL)
 		if err != nil {
 			return err

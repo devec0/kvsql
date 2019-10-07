@@ -29,6 +29,7 @@ type Server struct {
 	db            *db.DB       // Database connection
 	changes       chan *db.KeyValue
 	cancelWatcher context.CancelFunc
+	cancelUpdater context.CancelFunc
 }
 
 func New(dir string) (*Server, error) {
@@ -92,6 +93,8 @@ func New(dir string) (*Server, error) {
 		}
 	}
 
+	cancelUpdater := startUpdater(db)
+
 	s := &Server{
 		dir:           dir,
 		api:           api,
@@ -99,6 +102,7 @@ func New(dir string) (*Server, error) {
 		db:            db,
 		changes:       changes,
 		cancelWatcher: cancelWatcher,
+		cancelUpdater: cancelUpdater,
 	}
 
 	return s, nil
@@ -316,7 +320,25 @@ func globalWatcher(changes chan *db.KeyValue) (broadcast.ConnectFunc, context.Ca
 	return f, cancel
 }
 
+func startUpdater(db *db.DB) context.CancelFunc {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Minute):
+				if err := db.Cleanup(ctx); err != nil {
+					fmt.Println("Failed to purge expired TTL entries")
+				}
+			}
+		}
+	}()
+	return cancel
+}
+
 func (s *Server) Close(ctx context.Context) error {
+	s.cancelUpdater()
 	if s.cancelWatcher != nil {
 		s.cancelWatcher()
 	}
