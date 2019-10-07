@@ -71,32 +71,10 @@ func New(dir string) (*Server, error) {
 		return nil, err
 	}
 
+	connectFunc, cancelWatcher := globalWatcher(changes)
 	broadcaster := &broadcast.Broadcaster{}
-	var cancelWatcher context.CancelFunc
-	globalWatcher := func() (chan map[string]interface{}, error) {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancelWatcher = cancel
-		result := make(chan map[string]interface{}, 100)
-
-		go func() {
-			defer close(result)
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case e := <-changes:
-					result <- map[string]interface{}{
-						"data": e,
-					}
-				}
-			}
-		}()
-
-		return result, nil
-	}
-
 	subscribe := func(ctx context.Context) (chan map[string]interface{}, error) {
-		return broadcaster.Subscribe(ctx, globalWatcher)
+		return broadcaster.Subscribe(ctx, connectFunc)
 	}
 
 	mux := api.New(node.BindAddress(), db, changes, subscribe)
@@ -313,6 +291,29 @@ func dqliteDialFunc(cert *transport.Cert) client.DialFunc {
 
 		return conn, nil
 	}
+}
+
+func globalWatcher(changes chan *db.KeyValue) (broadcast.ConnectFunc, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	f := func() (chan map[string]interface{}, error) {
+		result := make(chan map[string]interface{}, 100)
+		go func() {
+			defer close(result)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case e := <-changes:
+					result <- map[string]interface{}{
+						"data": e,
+					}
+				}
+			}
+		}()
+
+		return result, nil
+	}
+	return f, cancel
 }
 
 func (s *Server) Close(ctx context.Context) error {
