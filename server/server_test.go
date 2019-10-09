@@ -7,9 +7,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/freeekanayaka/kvsql/client"
 	"github.com/freeekanayaka/kvsql/server"
 	"github.com/freeekanayaka/kvsql/server/config"
+	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/ghodss/yaml"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,6 +60,29 @@ func TestNew_SecondNode_Init(t *testing.T) {
 
 	require.NoError(t, s1.Close(context.Background()))
 	require.NoError(t, s2.Close(context.Background()))
+}
+
+func TestApi_Cluster_GET(t *testing.T) {
+	addr := "localhost:9991"
+	init := &config.Init{Address: addr}
+	dir, cleanup := newDirWithInit(t, init)
+	defer cleanup()
+
+	server, err := server.New(dir)
+	require.NoError(t, err)
+	defer server.Close(context.Background())
+
+	cert, err := transport.LoadCert(dir)
+	require.NoError(t, err)
+
+	client := client.New(addr, cert)
+
+	servers, err := client.Servers(context.Background())
+	require.NoError(t, err)
+
+	assert.Len(t, servers, 1)
+	assert.Equal(t, servers[0].ID, int64(1))
+	assert.Equal(t, servers[0].Address, addr)
 }
 
 // Return a new temporary directory populated with the test cluster certificate

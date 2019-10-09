@@ -10,5 +10,6 @@ func New(localNodeAddress string, db *db.DB, changes chan *db.KeyValue, subscrib
 	mux := http.NewServeMux()
 	mux.HandleFunc("/dqlite", dqliteHandleFunc(localNodeAddress))
 	mux.HandleFunc("/watch", watchHandleFunc(db, changes, subscribe))
+	mux.Handle("/cluster", clusterHandler(db))
 	return mux
 }
