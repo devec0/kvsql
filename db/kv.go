@@ -59,58 +59,14 @@ INSERT INTO key_value(` + fieldList + `)
 )
 
 func (d *DB) List(ctx context.Context, revision, limit int64, rangeKey, startKey string) ([]*KeyValue, int64, error) {
-	if limit == 0 {
-		limit = 1000000
-	} else {
-		limit = limit + 1
-	}
 
 	var resp []*KeyValue
 	var listRevision int64
 	var err error
 
 	err = d.tx(func(tx *sql.Tx) error {
-		listRevision, err = currentRevision(ctx, tx)
-		if err != nil {
-			return err
-		}
-		query := ""
-		args := []interface{}{}
-		if !strings.HasSuffix(rangeKey, "%") && revision <= 0 {
-			query = getSQL
-			args = append(args, rangeKey, 1)
-		} else if revision <= 0 {
-			query = listSQL
-			args = append(args, rangeKey, limit)
-		} else if len(startKey) > 0 {
-			listRevision = revision
-			query = listResumeSQL
-			args = append(args, revision, rangeKey, startKey, limit)
-		} else {
-			query = listRevisionSQL
-			args = append(args, revision, rangeKey, limit)
-		}
-
-		rows, err := tx.QueryContext(ctx, query, args...)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			value := KeyValue{}
-			if err := scan(rows.Scan, &value); err != nil {
-				return err
-			}
-			if value.Revision > listRevision {
-				listRevision = value.Revision
-			}
-			if value.Del == 0 {
-				resp = append(resp, &value)
-			}
-		}
-
-		return nil
+		resp, listRevision, err = listTx(ctx, tx, revision, limit, rangeKey, startKey)
+		return err
 	})
 	if err != nil {
 		return nil, 0, err
@@ -119,8 +75,78 @@ func (d *DB) List(ctx context.Context, revision, limit int64, rangeKey, startKey
 	return resp, listRevision, nil
 }
 
+func listTx(ctx context.Context, tx *sql.Tx, revision, limit int64, rangeKey, startKey string) ([]*KeyValue, int64, error) {
+	if limit == 0 {
+		limit = 1000000
+	} else {
+		limit = limit + 1
+	}
+
+	var resp []*KeyValue
+	listRevision, err := currentRevision(ctx, tx)
+	if err != nil {
+		return nil, 0, err
+	}
+	query := ""
+	args := []interface{}{}
+	if !strings.HasSuffix(rangeKey, "%") && revision <= 0 {
+		query = getSQL
+		args = append(args, rangeKey, 1)
+	} else if revision <= 0 {
+		query = listSQL
+		args = append(args, rangeKey, limit)
+	} else if len(startKey) > 0 {
+		listRevision = revision
+		query = listResumeSQL
+		args = append(args, revision, rangeKey, startKey, limit)
+	} else {
+		query = listRevisionSQL
+		args = append(args, revision, rangeKey, limit)
+	}
+
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		value := KeyValue{}
+		if err := scan(rows.Scan, &value); err != nil {
+			return nil, 0, err
+		}
+		if value.Revision > listRevision {
+			listRevision = value.Revision
+		}
+		if value.Del == 0 {
+			resp = append(resp, &value)
+		}
+	}
+
+	return resp, listRevision, nil
+}
+
 func (d *DB) Get(ctx context.Context, key string) (*KeyValue, error) {
-	kvs, _, err := d.List(ctx, 0, 1, key, "")
+	var kv *KeyValue
+	err := d.tx(func(tx *sql.Tx) error {
+		kvs, _, err := d.List(ctx, 0, 1, key, "")
+		if err != nil {
+			return err
+		}
+		if len(kvs) > 0 {
+			kv = kvs[0]
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return kv, nil
+}
+
+func getTx(ctx context.Context, tx *sql.Tx, key string) (*KeyValue, error) {
+	kvs, _, err := listTx(ctx, tx, 0, 1, key, "")
 	if err != nil {
 		return nil, err
 	}
@@ -131,25 +157,25 @@ func (d *DB) Get(ctx context.Context, key string) (*KeyValue, error) {
 }
 
 func (d *DB) Mod(ctx context.Context, delete bool, key string, value []byte, revision int64, ttl int64) (*KeyValue, error) {
-	oldKv, err := d.Get(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-
-	if revision > 0 && oldKv == nil {
-		return nil, ErrNotExists
-	}
-
-	if revision > 0 && oldKv.Revision != revision {
-		return nil, ErrRevisionMatch
-	}
-
-	if ttl > 0 {
-		ttl = int64(time.Now().Unix()) + ttl
-	}
-
 	var result *KeyValue
-	err = d.tx(func(tx *sql.Tx) error {
+	err := d.tx(func(tx *sql.Tx) error {
+		oldKv, err := getTx(ctx, tx, key)
+		if err != nil {
+			return err
+		}
+
+		if revision > 0 && oldKv == nil {
+			return ErrNotExists
+		}
+
+		if revision > 0 && oldKv.Revision != revision {
+			return ErrRevisionMatch
+		}
+
+		if ttl > 0 {
+			ttl = int64(time.Now().Unix()) + ttl
+		}
+
 		newRevision, err := newRevision(ctx, tx)
 		if err != nil {
 			return err
