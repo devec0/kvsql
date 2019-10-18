@@ -32,8 +32,13 @@ func (d *Driver) Create(ctx context.Context, key string, value []byte, ttl int64
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := postWatchChange(d.server.Cert(), addr, kv); err != nil {
-		return nil, nil, err
+	if addr == d.server.Address() {
+		// Shortcut if we are the leader.
+		d.server.Notify(kv)
+	} else {
+		if err := postWatchChange(d.server.Cert(), addr, kv); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	if kv.Version == 1 {

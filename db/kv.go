@@ -165,6 +165,8 @@ func getTx(ctx context.Context, tx *sql.Tx, key string) (*KeyValue, error) {
 	return nil, nil
 }
 
+var ErrKeyExists = fmt.Errorf("key already exists")
+
 func (d *DB) Create(ctx context.Context, key string, value []byte, ttl int64) (*KeyValue, error) {
 	if ttl > 0 {
 		ttl = int64(time.Now().Unix()) + ttl
@@ -186,6 +188,9 @@ func (d *DB) Create(ctx context.Context, key string, value []byte, ttl int64) (*
 			result.TTL,
 		)
 		if err != nil {
+			if strings.Contains(err.Error(), "NOT NULL constraint failed: key_value.create_revision") {
+				return ErrKeyExists
+			}
 			return err
 		}
 		id, err := r.LastInsertId()

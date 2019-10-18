@@ -24,6 +24,7 @@ import (
 // Server sets up a single dqlite node and serves the cluster management API.
 type Server struct {
 	dir           string          // Data directory
+	address       string          // Network address
 	cert          *transport.Cert // TLS configuration
 	api           *http.Server    // API server
 	node          *dqlite.Node    // Dqlite node
@@ -98,6 +99,7 @@ func New(dir string) (*Server, error) {
 
 	s := &Server{
 		dir:           dir,
+		address:       cfg.Address,
 		cert:          cfg.Cert,
 		api:           api,
 		node:          node,
@@ -108,6 +110,14 @@ func New(dir string) (*Server, error) {
 	}
 
 	return s, nil
+}
+
+func (s *Server) Address() string {
+	return s.address
+}
+
+func (s *Server) Notify(kv *db.KeyValue) {
+	s.changes <- kv
 }
 
 // Register a new Dqlite driver and return the registration name.

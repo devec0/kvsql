@@ -20,6 +20,7 @@ import (
 	"time"
 
 	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
+	"github.com/freeekanayaka/kvsql/db"
 	"golang.org/x/net/context"
 	utiltrace "k8s.io/utils/trace"
 )
@@ -179,6 +180,9 @@ func (txn *txn) Commit() (*TxnResponse, error) {
 
 	if put := isCreate(txn); put != nil {
 		r, err := txn.kv.Create(txn.ctx, *put)
+		if err == db.ErrKeyExists {
+			return resp, nil
+		}
 		if err != nil {
 			return nil, err
 		}
