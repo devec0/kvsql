@@ -108,7 +108,10 @@ func (k *kv) Put(ctx context.Context, key, val string, opts ...OpOption) (*PutRe
 }
 
 func (k *kv) Create(ctx context.Context, op Op) (*PutResponse, error) {
-	oldR, r, err := k.d.Update(ctx, op.key, op.val, op.rev, int64(op.leaseID))
+	if op.rev != 0 {
+		panic("expected revision to be zero for create")
+	}
+	oldR, r, err := k.d.Create(ctx, op.key, op.val, int64(op.leaseID))
 	if oldR != nil {
 		panic("response with PrevKv")
 	}

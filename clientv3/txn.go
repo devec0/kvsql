@@ -178,9 +178,6 @@ func (txn *txn) Commit() (*TxnResponse, error) {
 	}
 
 	if put := isCreate(txn); put != nil {
-		if put.rev != 0 {
-			return nil, fmt.Errorf("expected revision to be zero for create")
-		}
 		r, err := txn.kv.Create(txn.ctx, *put)
 		if err != nil {
 			return nil, err

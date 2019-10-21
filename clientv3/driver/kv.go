@@ -22,6 +22,30 @@ func (d *Driver) Get(ctx context.Context, key string) (*db.KeyValue, error) {
 	return db.Get(ctx, key)
 }
 
+func (d *Driver) Create(ctx context.Context, key string, value []byte, ttl int64) (*db.KeyValue, *db.KeyValue, error) {
+	db := d.server.DB()
+	kv, err := db.Create(ctx, key, value, ttl)
+	if err != nil {
+		return nil, nil, err
+	}
+	addr, err := d.server.Leader(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := postWatchChange(d.server.Cert(), addr, kv); err != nil {
+		return nil, nil, err
+	}
+
+	if kv.Version == 1 {
+		return nil, kv, nil
+	}
+
+	oldKv := *kv
+	oldKv.Revision = oldKv.OldRevision
+	oldKv.Value = oldKv.OldValue
+	return &oldKv, kv, nil
+}
+
 func (d *Driver) Update(ctx context.Context, key string, value []byte, revision, ttl int64) (*db.KeyValue, *db.KeyValue, error) {
 	db := d.server.DB()
 	kv, err := db.Mod(ctx, false, key, value, revision, ttl)

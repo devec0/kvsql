@@ -14,8 +14,8 @@ var schema = []string{
 	`CREATE TABLE key_value	(
            name INTEGER,
            value BLOB,
-           create_revision INTEGER,
-           revision INTEGER,
+           create_revision INTEGER NOT NULL,
+           revision INTEGER NOT NULL,
            ttl INTEGER,
            version INTEGER,
            del INTEGER,
@@ -28,6 +28,14 @@ var schema = []string{
            id INTEGER PRIMARY KEY AUTOINCREMENT,
            t TEXT)`,
 	`INSERT INTO revision(t) VALUES(NULL)`, // Initial revision will be 1
+	`CREATE TRIGGER key_value_revision
+           AFTER INSERT ON key_value
+           FOR EACH ROW
+           WHEN NEW.id IS NOT NULL
+           BEGIN
+             DELETE FROM revision;
+             INSERT INTO revision(t) VALUES(NULL);
+           END`,
 }
 
 // CreateSchema initializes the database schema.

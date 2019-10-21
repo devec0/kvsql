@@ -56,6 +56,15 @@ INSERT INTO key_value(` + fieldList + `)
 	replaySQL    = "SELECT id, " + fieldList + " FROM key_value WHERE name like ? and revision >= ? ORDER BY revision ASC"
 	toDeleteSQL  = "SELECT count(*) c, name, max(revision) FROM key_value GROUP BY name HAVING c > 1 or (c = 1 and del = 1)"
 	deleteOldSQL = "DELETE FROM key_value WHERE name = ? AND (revision < ? OR (revision = ? AND del = 1))"
+	createSQL    = `
+	INSERT INTO key_value(id, ` + fieldList + `)
+          VALUES ((SELECT id FROM revision), ?, ?, NULL, 0,
+            CASE
+              WHEN (SELECT revision FROM key_value WHERE name=? UNION ALL SELECT 0 AS revision ORDER BY revision DESC LIMIT 1) = 0
+                THEN (SELECT id FROM revision)
+                ELSE NULL
+              END,
+             (SELECT id FROM revision), ?, 1, 0)`
 )
 
 func (d *DB) List(ctx context.Context, revision, limit int64, rangeKey, startKey string) ([]*KeyValue, int64, error) {
@@ -154,6 +163,45 @@ func getTx(ctx context.Context, tx *sql.Tx, key string) (*KeyValue, error) {
 		return kvs[0], nil
 	}
 	return nil, nil
+}
+
+func (d *DB) Create(ctx context.Context, key string, value []byte, ttl int64) (*KeyValue, error) {
+	if ttl > 0 {
+		ttl = int64(time.Now().Unix()) + ttl
+	}
+	var result *KeyValue
+
+	err := retry(func() error {
+		result = &KeyValue{
+			Key:     key,
+			Value:   value,
+			TTL:     int64(ttl),
+			Version: 1,
+		}
+
+		r, err := d.db.ExecContext(ctx, createSQL,
+			result.Key,
+			result.Value,
+			result.Key,
+			result.TTL,
+		)
+		if err != nil {
+			return err
+		}
+		id, err := r.LastInsertId()
+		if err != nil {
+			return err
+		}
+		result.Revision = id
+		result.CreateRevision = result.Revision
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func (d *DB) Mod(ctx context.Context, delete bool, key string, value []byte, revision int64, ttl int64) (*KeyValue, error) {
