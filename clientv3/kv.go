@@ -107,6 +107,17 @@ func (k *kv) Put(ctx context.Context, key, val string, opts ...OpOption) (*PutRe
 	return k.opPut(ctx, op)
 }
 
+func (k *kv) Create(ctx context.Context, op Op) (*PutResponse, error) {
+	oldR, r, err := k.d.Update(ctx, op.key, op.val, op.rev, int64(op.leaseID))
+	if oldR != nil {
+		panic("response with PrevKv")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return getPutResponse(oldR, r), nil
+}
+
 func (k *kv) opPut(ctx context.Context, op Op) (*PutResponse, error) {
 	oldR, r, err := k.d.Update(ctx, op.key, op.val, op.rev, int64(op.leaseID))
 	if err != nil {

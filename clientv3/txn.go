@@ -156,14 +156,46 @@ func (txn *txn) do(op Op) (*pb.ResponseOp, error) {
 	}
 }
 
+func isCreate(txn *txn) *Op {
+	if len(txn.cmps) == 1 &&
+		txn.cmps[0].Target == pb.Compare_MOD &&
+		txn.cmps[0].Result == pb.Compare_EQUAL &&
+		txn.cmps[0].GetModRevision() == 0 &&
+		len(txn.fas) == 0 &&
+		len(txn.sus) == 1 &&
+		txn.sus[0].IsPut() {
+		return &txn.sus[0]
+	}
+	return nil
+}
+
 func (txn *txn) Commit() (*TxnResponse, error) {
 	trace := utiltrace.New("SQL Commit")
 	defer trace.LogIfLong(500 * time.Millisecond)
 
-	locks := map[string]bool{}
 	resp := &TxnResponse{
 		Header: &pb.ResponseHeader{},
 	}
+
+	if put := isCreate(txn); put != nil {
+		if put.rev != 0 {
+			return nil, fmt.Errorf("expected revision to be zero for create")
+		}
+		r, err := txn.kv.Create(txn.ctx, *put)
+		if err != nil {
+			return nil, err
+		}
+		resp.Succeeded = true
+		resp.Responses = append(resp.Responses,
+			&pb.ResponseOp{
+				Response: &pb.ResponseOp_ResponsePut{
+					ResponsePut: (*pb.PutResponse)(r),
+				},
+			})
+		return resp, nil
+	}
+
+	locks := map[string]bool{}
 
 	good := true
 	for _, c := range txn.cmps {
