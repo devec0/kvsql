@@ -50,10 +50,10 @@ func (d *DB) tx(f func(*sql.Tx) error) error {
 // Retry transient db errors.
 func retry(f func() error) error {
 	var err error
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 250; i++ {
 		if err = f(); err != nil {
 			if err.Error() == "database is locked" {
-				time.Sleep(250 * time.Millisecond)
+				time.Sleep(time.Millisecond)
 				continue
 			}
 			return err
