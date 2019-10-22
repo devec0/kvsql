@@ -33,6 +33,8 @@ func TestCreate_First(t *testing.T) {
 	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", SelfLink: "testlink"}}
 	err := store.Create(ctx, "/foo", obj, out, uint64(0))
 	require.NoError(t, err)
+	err = store.Create(ctx, "/bar", obj, out, uint64(0))
+	require.NoError(t, err)
 }
 
 func TestCreate_Existing(t *testing.T) {

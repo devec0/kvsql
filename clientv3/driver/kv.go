@@ -1,15 +1,17 @@
 package driver
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/freeekanayaka/kvsql/db"
 	"github.com/freeekanayaka/kvsql/transport"
-	"github.com/pkg/errors"
 )
 
 func (d *Driver) List(ctx context.Context, revision, limit int64, rangeKey, startKey string) ([]*db.KeyValue, int64, error) {
@@ -28,17 +30,8 @@ func (d *Driver) Create(ctx context.Context, key string, value []byte, ttl int64
 	if err != nil {
 		return nil, nil, err
 	}
-	addr, err := d.server.Leader(ctx)
-	if err != nil {
+	if err := d.postWatchChange(ctx, kv); err != nil {
 		return nil, nil, err
-	}
-	if addr == d.server.Address() {
-		// Shortcut if we are the leader.
-		d.server.Notify(kv)
-	} else {
-		if err := postWatchChange(d.server.Cert(), addr, kv); err != nil {
-			return nil, nil, err
-		}
 	}
 
 	if kv.Version == 1 {
@@ -57,11 +50,7 @@ func (d *Driver) Update(ctx context.Context, key string, value []byte, revision,
 	if err != nil {
 		return nil, nil, err
 	}
-	addr, err := d.server.Leader(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := postWatchChange(d.server.Cert(), addr, kv); err != nil {
+	if err := d.postWatchChange(ctx, kv); err != nil {
 		return nil, nil, err
 	}
 
@@ -84,31 +73,77 @@ func (d *Driver) Delete(ctx context.Context, key string, revision int64) ([]*db.
 	if err != nil {
 		return nil, err
 	}
-	addr, err := d.server.Leader(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := postWatchChange(d.server.Cert(), addr, kv); err != nil {
+	if err := d.postWatchChange(ctx, kv); err != nil {
 		return nil, err
 	}
 	return nil, err
 }
 
-func postWatchChange(cert *transport.Cert, addr string, kv *db.KeyValue) error {
-	url := fmt.Sprintf("http://%s/watch", addr)
+func (d *Driver) postWatchChange(ctx context.Context, kv *db.KeyValue) error {
+	addr, err := d.server.Leader(ctx)
+	if err != nil {
+		return err
+	}
+	if addr == d.server.Address() {
+		// Shortcut if we are the leader.
+		d.server.Notify(kv)
+		return nil
+	}
+
+	conn, ok := d.notify[addr]
+	if !ok {
+		var err error
+		request := &http.Request{
+			Method:     "POST",
+			Proto:      "HTTP/1.1",
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Header:     make(http.Header),
+			Host:       addr,
+		}
+		path := fmt.Sprintf("http://%s/watch", addr)
+
+		request.URL, err = url.Parse(path)
+		if err != nil {
+			return err
+		}
+
+		request.Header.Set("Upgrade", "watch")
+		request = request.WithContext(ctx)
+
+		conn, err = transport.Dial(ctx, d.server.Cert(), addr)
+		if err != nil {
+			return err
+		}
+		if err := request.Write(conn); err != nil {
+			return err
+		}
+
+		response, err := http.ReadResponse(bufio.NewReader(conn), request)
+		if err != nil {
+			return err
+		}
+		if response.StatusCode != http.StatusSwitchingProtocols {
+			err = fmt.Errorf("Dialing failed: expected status code 101 got %d", response.StatusCode)
+			return err
+		}
+		if response.Header.Get("Upgrade") != "watch" {
+			err = fmt.Errorf("Missing or unexpected Upgrade header in response")
+			return err
+		}
+
+		d.notify[addr] = conn
+	}
 
 	b := new(bytes.Buffer)
 	json.NewEncoder(b).Encode(*kv)
+	data := b.Bytes()
 
-	client := transport.HTTP(cert)
-
-	response, err := client.Post(url, "application/json; charset=utf-8", b)
-	if err != nil {
-		return errors.Wrap(err, "Sending HTTP request failed")
-	}
-
-	if response.StatusCode != 200 {
-		return fmt.Errorf("HTTP request failed with: %s", response.Status)
+	n, err := conn.Write(data)
+	if err != nil || n != len(data) {
+		conn.Close()
+		d.notify[addr] = nil
+		return err
 	}
 
 	return nil

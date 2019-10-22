@@ -5,8 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,12 +25,40 @@ func watchHandleFunc(db *model.DB, changes chan *model.KeyValue, subscribe Subcr
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Receive change notifications.
 		if r.Method == "POST" {
-			kv := model.KeyValue{}
-			if err := readToJSON(r.Body, &kv); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+			if r.Header.Get("Upgrade") != "watch" {
+				http.Error(w, "Missing or invalid upgrade header", http.StatusBadRequest)
 				return
 			}
-			changes <- &kv
+			hijacker, ok := w.(http.Hijacker)
+			if !ok {
+				http.Error(w, "Webserver doesn't support hijacking", http.StatusInternalServerError)
+				return
+			}
+
+			conn, _, err := hijacker.Hijack()
+			if err != nil {
+				message := errors.Wrap(err, "Failed to hijack connection").Error()
+				http.Error(w, message, http.StatusInternalServerError)
+				return
+			}
+
+			// Write the status line and upgrade header by hand since w.WriteHeader()
+			// would fail after Hijack()
+			data := []byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: watch\r\n\r\n")
+			if n, err := conn.Write(data); err != nil || n != len(data) {
+				conn.Close()
+				return
+			}
+			defer conn.Close()
+
+			dec := json.NewDecoder(conn)
+			for {
+				kv := model.KeyValue{}
+				if err := dec.Decode(&kv); err != nil {
+					break
+				}
+				changes <- &kv
+			}
 		}
 
 		// Broadcast change notifications.
@@ -124,15 +150,6 @@ func watchHandleFunc(db *model.DB, changes chan *model.KeyValue, subscribe Subcr
 
 		}
 	}
-}
-
-func readToJSON(r io.Reader, obj interface{}) error {
-	buf, err := ioutil.ReadAll(r)
-	if err != nil {
-		return err
-	}
-
-	return json.Unmarshal(buf, obj)
 }
 
 func matchesKey(prefix bool, key string, kv *model.KeyValue) bool {
