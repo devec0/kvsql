@@ -16,6 +16,8 @@ func Open(driver string, dsn string) (*DB, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "open cluster database")
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	return &DB{db: db}, nil
 }
 
