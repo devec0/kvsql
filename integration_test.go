@@ -56,6 +56,23 @@ func TestCreate_Existing(t *testing.T) {
 	}
 }
 
+func TestCreateAgainAfterDeletion(t *testing.T) {
+	store, cleanup := newStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	out := &example.Pod{}
+	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", SelfLink: "testlink"}}
+	require.NoError(t, store.Create(ctx, "foo", obj, out, uint64(0)))
+
+	err := store.Delete(ctx, "/foo", obj, nil, nil)
+	require.NoError(t, err)
+
+	obj = &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", SelfLink: "testlink"}}
+	require.NoError(t, store.Create(ctx, "foo", obj, out, uint64(0)))
+}
+
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 

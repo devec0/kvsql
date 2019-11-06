@@ -24,6 +24,7 @@ var schema = []string{
            old_revision INTEGER)`,
 	`CREATE INDEX name_idx ON key_value (name)`,
 	`CREATE INDEX revision_idx ON key_value (revision)`,
+	`CREATE INDEX name_del_revision_idx ON key_value (name, del, revision)`,
 	`CREATE TABLE revision (
            id INTEGER PRIMARY KEY AUTOINCREMENT,
            t TEXT)`,

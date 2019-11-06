@@ -8,7 +8,12 @@ import (
 )
 
 type DB struct {
-	db *sql.DB
+	db         *sql.DB
+	createStmt *sql.Stmt
+}
+
+func (d *DB) DB() *sql.DB {
+	return d.db
 }
 
 func Open(driver string, dsn string) (*DB, error) {
@@ -22,6 +27,11 @@ func Open(driver string, dsn string) (*DB, error) {
 }
 
 func (d *DB) Close() error {
+	if d.createStmt != nil {
+		if err := d.createStmt.Close(); err != nil {
+			return errors.Wrap(err, "close create statement")
+		}
+	}
 	if err := d.db.Close(); err != nil {
 		return errors.Wrap(err, "close cluster database")
 	}

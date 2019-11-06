@@ -60,7 +60,13 @@ INSERT INTO key_value(` + fieldList + `)
 	INSERT INTO key_value(id, ` + fieldList + `)
           VALUES ((SELECT id FROM revision), ?, ?, NULL, 0,
             CASE
-              WHEN (SELECT revision FROM key_value WHERE name=? UNION ALL SELECT 0 AS revision ORDER BY revision DESC LIMIT 1) = 0
+              WHEN (
+                CASE
+                  WHEN (SELECT revision FROM key_value where name=? AND del=1 UNION ALL SELECT 0 AS revision ORDER BY revision DESC LIMIT 1) = 0
+                    THEN (SELECT revision FROM key_value WHERE name=? AND del=0 UNION ALL SELECT 0 AS revision ORDER BY revision DESC LIMIT 1)
+                    ELSE (SELECT revision FROM key_value WHERE name=? AND del=0 AND revision > (SELECT max(revision) FROM key_value where name=? AND del=1) UNION ALL SELECT 0 AS revision ORDER BY revision DESC LIMIT 1)
+                  END
+                ) = 0
                 THEN (SELECT id FROM revision)
                 ELSE NULL
               END,
@@ -173,6 +179,14 @@ func (d *DB) Create(ctx context.Context, key string, value []byte, ttl int64) (*
 	}
 	var result *KeyValue
 
+	if d.createStmt == nil {
+		stmt, err := d.db.Prepare(createSQL)
+		if err != nil {
+			return nil, errors.Wrap(err, "prepare create statement")
+		}
+		d.createStmt = stmt
+	}
+
 	err := retry(func() error {
 		result = &KeyValue{
 			Key:     key,
@@ -181,9 +195,12 @@ func (d *DB) Create(ctx context.Context, key string, value []byte, ttl int64) (*
 			Version: 1,
 		}
 
-		r, err := d.db.ExecContext(ctx, createSQL,
+		r, err := d.createStmt.ExecContext(ctx,
 			result.Key,
 			result.Value,
+			result.Key,
+			result.Key,
+			result.Key,
 			result.Key,
 			result.TTL,
 		)
