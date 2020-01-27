@@ -81,7 +81,7 @@ func TestApi_Cluster_GET(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Len(t, servers, 1)
-	assert.Equal(t, servers[0].ID, int64(0x2dc171858c3155be))
+	assert.Equal(t, servers[0].ID, uint64(0x2dc171858c3155be))
 	assert.Equal(t, servers[0].Address, addr)
 }
 

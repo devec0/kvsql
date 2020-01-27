@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/freeekanayaka/kvsql/db"
+	"github.com/canonical/go-dqlite/client"
 	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
 )
@@ -22,7 +22,7 @@ func New(server string, cert *transport.Cert) *Client {
 	}
 }
 
-type Server = db.Server
+type Server = client.NodeInfo
 
 func (c *Client) Servers(ctx context.Context) ([]Server, error) {
 	url := fmt.Sprintf("http://%s/cluster", c.server)

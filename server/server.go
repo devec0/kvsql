@@ -17,6 +17,7 @@ import (
 	"github.com/freeekanayaka/kvsql/pkg/broadcast"
 	"github.com/freeekanayaka/kvsql/server/api"
 	"github.com/freeekanayaka/kvsql/server/config"
+	"github.com/freeekanayaka/kvsql/server/membership"
 	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
 )
@@ -81,7 +82,8 @@ func New(dir string) (*Server, error) {
 	}
 
 	dial := dqliteDialFunc(cfg.Cert)
-	mux := api.New(node.BindAddress(), db, cfg.Store, dial, changes, subscribe)
+	membership := membership.New(cfg.Store, dial)
+	mux := api.New(node.BindAddress(), db, membership, changes, subscribe)
 	api := &http.Server{Handler: mux}
 
 	if err := startAPI(cfg, api); err != nil {
@@ -96,7 +98,7 @@ func New(dir string) (*Server, error) {
 		}
 	}
 
-	cancelUpdater := startUpdater(db, cfg.Store, dial)
+	cancelUpdater := startUpdater(db, cfg.Store, membership)
 
 	s := &Server{
 		dir:           dir,
@@ -324,7 +326,7 @@ func globalWatcher(changes chan *db.KeyValue) (broadcast.ConnectFunc, context.Ca
 	return f, cancel
 }
 
-func startUpdater(db *db.DB, store client.NodeStore, dial client.DialFunc) context.CancelFunc {
+func startUpdater(db *db.DB, store client.NodeStore, membership *membership.Membership) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		for {
@@ -336,27 +338,15 @@ func startUpdater(db *db.DB, store client.NodeStore, dial client.DialFunc) conte
 					fmt.Println("Failed to purge expired TTL entries")
 				}
 			case <-time.After(5 * time.Second):
-				var servers []client.NodeInfo
-				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-				client, err := client.FindLeader(ctx2, store, client.WithDialFunc(dial))
-				if err != nil {
-					fmt.Printf("Failed to get leader: %v\n", err)
-					goto moveon
-
-				}
-				servers, err = client.Cluster(ctx2)
+				servers, err := membership.List()
 				if err != nil {
 					fmt.Printf("Failed to get servers: %v\n", err)
-					client.Close()
-					goto moveon
+					continue
 
 				}
-				client.Close()
-				if err := store.Set(ctx2, servers); err != nil {
+				if err := store.Set(ctx, servers); err != nil {
 					fmt.Printf("Failed to update servers: %v\n", err)
 				}
-			moveon:
-				cancel2()
 			}
 		}
 	}()
