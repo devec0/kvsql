@@ -7,10 +7,6 @@ import (
 )
 
 var schema = []string{
-	`CREATE TABLE servers (
-           id INTEGER PRIMARY KEY NOT NULL,
-           address TEXT NOT NULL,
-           UNIQUE (address))`,
 	`CREATE TABLE key_value	(
            name INTEGER,
            value BLOB,

@@ -80,7 +80,8 @@ func New(dir string) (*Server, error) {
 		return broadcaster.Subscribe(ctx, connectFunc)
 	}
 
-	mux := api.New(node.BindAddress(), db, changes, subscribe)
+	dial := dqliteDialFunc(cfg.Cert)
+	mux := api.New(node.BindAddress(), db, cfg.Store, dial, changes, subscribe)
 	api := &http.Server{Handler: mux}
 
 	if err := startAPI(cfg, api); err != nil {
@@ -95,7 +96,7 @@ func New(dir string) (*Server, error) {
 		}
 	}
 
-	cancelUpdater := startUpdater(db, cfg.Store)
+	cancelUpdater := startUpdater(db, cfg.Store, dial)
 
 	s := &Server{
 		dir:           dir,
@@ -151,13 +152,11 @@ func initConfig(ctx context.Context, cfg *config.Config, db *db.DB) error {
 
 	if len(cfg.Init.Cluster) == 0 {
 		servers = append(servers, client.NodeInfo{
-			ID:      dqlite.BootstrapID,
 			Address: cfg.Init.Address,
 		})
 	} else {
-		for i, address := range cfg.Init.Cluster {
+		for _, address := range cfg.Init.Cluster {
 			servers = append(servers, client.NodeInfo{
-				ID:      uint64(i + 1), // The ID isn't really used,
 				Address: address,
 			})
 		}
@@ -235,9 +234,6 @@ func initServer(ctx context.Context, cfg *config.Config, db *db.DB) error {
 		if err := joinCluster(ctx, cfg); err != nil {
 			return err
 		}
-	}
-	if err := db.AddServer(ctx, cfg.ID, cfg.Address); err != nil {
-		return err
 	}
 	return nil
 }
@@ -328,7 +324,7 @@ func globalWatcher(changes chan *db.KeyValue) (broadcast.ConnectFunc, context.Ca
 	return f, cancel
 }
 
-func startUpdater(db *db.DB, store client.NodeStore) context.CancelFunc {
+func startUpdater(db *db.DB, store client.NodeStore, dial client.DialFunc) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		for {
@@ -340,18 +336,27 @@ func startUpdater(db *db.DB, store client.NodeStore) context.CancelFunc {
 					fmt.Println("Failed to purge expired TTL entries")
 				}
 			case <-time.After(5 * time.Second):
-				servers, err := db.GetServers(ctx)
+				var servers []client.NodeInfo
+				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+				client, err := client.FindLeader(ctx2, store, client.WithDialFunc(dial))
 				if err != nil {
-					fmt.Printf("Failed to get servers: %v\n", err)
+					fmt.Printf("Failed to get leader: %v\n", err)
+					goto moveon
 
 				}
-				infos := make([]client.NodeInfo, len(servers))
-				for i, server := range servers {
-					infos[i].Address = server.Address
+				servers, err = client.Cluster(ctx2)
+				if err != nil {
+					fmt.Printf("Failed to get servers: %v\n", err)
+					client.Close()
+					goto moveon
+
 				}
-				if err := store.Set(ctx, infos); err != nil {
+				client.Close()
+				if err := store.Set(ctx2, servers); err != nil {
 					fmt.Printf("Failed to update servers: %v\n", err)
 				}
+			moveon:
+				cancel2()
 			}
 		}
 	}()
