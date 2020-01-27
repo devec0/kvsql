@@ -319,10 +319,6 @@ func startUpdater(db *db.DB, store client.NodeStore, membership *membership.Memb
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(time.Minute):
-				if err := db.Cleanup(ctx); err != nil {
-					fmt.Println("Failed to purge expired TTL entries")
-				}
 			case <-time.After(5 * time.Second):
 				servers, err := membership.List()
 				if err != nil {
@@ -332,6 +328,28 @@ func startUpdater(db *db.DB, store client.NodeStore, membership *membership.Memb
 				}
 				if err := store.Set(ctx, servers); err != nil {
 					fmt.Printf("Failed to update servers: %v\n", err)
+				}
+			}
+		}
+	}()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(30 * time.Second):
+				membership.Adjust()
+			}
+		}
+	}()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Minute):
+				if err := db.Cleanup(ctx); err != nil {
+					fmt.Println("Failed to purge expired TTL entries")
 				}
 			}
 		}

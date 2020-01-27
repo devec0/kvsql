@@ -77,6 +77,70 @@ func (m *Membership) Leader() (string, error) {
 	return info.Address, nil
 }
 
+func (m *Membership) Adjust() {
+	// Check if we are the current leader.
+	leader, err := m.getLeader()
+	if err != nil {
+		return
+	}
+	defer leader.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	info, err := leader.Leader(ctx)
+	if err != nil {
+		return
+	}
+
+	if info == nil || info.Address != m.address {
+		return
+	}
+
+	servers, err := leader.Cluster(ctx)
+	if err != nil {
+		return
+	}
+
+	// If there's only one server, there's nothing to do.
+	if len(servers) == 1 {
+		return
+	}
+
+	// If there are two servers, we want the second one to be a spare.
+	if len(servers) == 2 {
+		for _, server := range servers {
+			if server.Address == info.Address {
+				continue
+			}
+			if server.Role == client.Voter {
+				leader.Assign(ctx, server.ID, client.Spare)
+				return
+			}
+		}
+	}
+
+	voters := []client.NodeInfo{}
+	candidates := []client.NodeInfo{}
+
+	for _, server := range servers {
+		switch server.Role {
+		case client.Voter:
+			voters = append(voters, server)
+		case client.Spare:
+			candidates = append(candidates, server)
+		}
+	}
+
+	if len(voters) < 3 {
+		for _, server := range candidates {
+			if err := leader.Assign(ctx, server.ID, client.Voter); err == nil {
+				return
+			}
+		}
+	}
+}
+
 // Best effort to shutdown gracefully.
 func (m *Membership) Shutdown() {
 	leader, err := m.getLeader()
