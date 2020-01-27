@@ -9,14 +9,16 @@ import (
 
 // Membership manages dqlite cluster membership.
 type Membership struct {
-	store client.NodeStore
-	dial  client.DialFunc
+	address string
+	store   client.NodeStore
+	dial    client.DialFunc
 }
 
-func New(store client.NodeStore, dial client.DialFunc) *Membership {
+func New(address string, store client.NodeStore, dial client.DialFunc) *Membership {
 	return &Membership{
-		store: store,
-		dial:  dial,
+		address: address,
+		store:   store,
+		dial:    dial,
 	}
 }
 
@@ -32,7 +34,30 @@ func (m *Membership) List() ([]client.NodeInfo, error) {
 }
 
 func (m *Membership) getLeader() (*client.Client, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	return client.FindLeader(ctx, m.store, client.WithDialFunc(m.dial))
+}
+
+// Best effort to shutdown gracefully.
+func (m *Membership) Shutdown() {
+	leader, err := m.getLeader()
+	if err != nil {
+		return
+	}
+	defer leader.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	info, err := leader.Leader(ctx)
+	if err != nil {
+		return
+	}
+
+	if info.Address != m.address {
+		return
+	}
+
+	leader.Transfer(ctx, 0)
 }

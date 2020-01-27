@@ -24,12 +24,13 @@ import (
 
 // Server sets up a single dqlite node and serves the cluster management API.
 type Server struct {
-	dir           string          // Data directory
-	address       string          // Network address
-	cert          *transport.Cert // TLS configuration
-	api           *http.Server    // API server
-	node          *dqlite.Node    // Dqlite node
-	db            *db.DB          // Database connection
+	dir           string                 // Data directory
+	address       string                 // Network address
+	cert          *transport.Cert        // TLS configuration
+	api           *http.Server           // API server
+	node          *dqlite.Node           // Dqlite node
+	db            *db.DB                 // Database connection
+	membership    *membership.Membership // Cluster membership
 	changes       chan *db.KeyValue
 	cancelWatcher context.CancelFunc
 	cancelUpdater context.CancelFunc
@@ -81,8 +82,7 @@ func New(dir string) (*Server, error) {
 		return broadcaster.Subscribe(ctx, connectFunc)
 	}
 
-	dial := dqliteDialFunc(cfg.Cert)
-	membership := membership.New(cfg.Store, dial)
+	membership := membership.New(cfg.Address, cfg.Store, dqliteDialFunc(cfg.Cert))
 	mux := api.New(node.BindAddress(), db, membership, changes, subscribe)
 	api := &http.Server{Handler: mux}
 
@@ -107,6 +107,7 @@ func New(dir string) (*Server, error) {
 		api:           api,
 		node:          node,
 		db:            db,
+		membership:    membership,
 		changes:       changes,
 		cancelWatcher: cancelWatcher,
 		cancelUpdater: cancelUpdater,
@@ -386,6 +387,7 @@ func (s *Server) Close(ctx context.Context) error {
 	if err := s.db.Close(); err != nil {
 		return err
 	}
+	s.membership.Shutdown()
 	if err := s.api.Shutdown(ctx); err != nil {
 		return errors.Wrap(err, "shutdown API server")
 	}
