@@ -151,7 +151,7 @@ func initConfig(ctx context.Context, cfg *config.Config, db *db.DB) error {
 
 	if len(cfg.Init.Cluster) == 0 {
 		servers = append(servers, client.NodeInfo{
-			ID:      1,
+			ID:      dqlite.BootstrapID,
 			Address: cfg.Init.Address,
 		})
 	} else {
@@ -168,7 +168,7 @@ func initConfig(ctx context.Context, cfg *config.Config, db *db.DB) error {
 	}
 
 	if len(cfg.Init.Cluster) == 0 {
-		cfg.ID = 1
+		cfg.ID = dqlite.BootstrapID
 	} else {
 		// Figure out our ID.
 		id, err := db.MaxServerID(ctx)
