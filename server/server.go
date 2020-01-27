@@ -93,7 +93,7 @@ func New(dir string) (*Server, error) {
 	// If we are initializing a new server, update the cluster state
 	// accordingly.
 	if cfg.Init != nil {
-		if err := initServer(ctx, cfg, db); err != nil {
+		if err := initServer(ctx, cfg, db, membership); err != nil {
 			return nil, err
 		}
 	}
@@ -228,30 +228,15 @@ func startAPI(cfg *config.Config, api *http.Server) error {
 	return nil
 }
 
-func initServer(ctx context.Context, cfg *config.Config, db *db.DB) error {
+func initServer(ctx context.Context, cfg *config.Config, db *db.DB, membership *membership.Membership) error {
 	if len(cfg.Init.Cluster) == 0 {
 		if err := db.CreateSchema(ctx); err != nil {
 			return err
 		}
 	} else {
-		if err := joinCluster(ctx, cfg); err != nil {
+		if err := membership.Add(cfg.ID, cfg.Address); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-// Make this node join an existing dqlite cluster.
-func joinCluster(ctx context.Context, cfg *config.Config) error {
-	dial := dqliteDialFunc(cfg.Cert)
-	info := client.NodeInfo{ID: cfg.ID, Address: cfg.Address}
-	client, err := client.FindLeader(ctx, cfg.Store, client.WithDialFunc(dial))
-	if err != nil {
-		return errors.Wrap(err, "find leader")
-	}
-	defer client.Close()
-	if err := client.Add(ctx, info); err != nil {
-		return errors.Wrap(err, "join cluster")
 	}
 	return nil
 }
@@ -355,20 +340,7 @@ func startUpdater(db *db.DB, store client.NodeStore, membership *membership.Memb
 }
 
 func (s *Server) Leader(ctx context.Context) (string, error) {
-	client, err := client.New(ctx, s.node.BindAddress())
-	if err != nil {
-		return "", errors.Wrap(err, "connect to dqlite node")
-	}
-	defer client.Close()
-
-	info, err := client.Leader(ctx)
-	if err != nil {
-		return "", errors.Wrap(err, "get leader")
-	}
-	if info == nil {
-		return "", fmt.Errorf("no leader found")
-	}
-	return info.Address, nil
+	return s.membership.Leader()
 }
 
 func (s *Server) DB() *db.DB {
