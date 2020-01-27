@@ -170,12 +170,8 @@ func initConfig(ctx context.Context, cfg *config.Config, db *db.DB) error {
 	if len(cfg.Init.Cluster) == 0 {
 		cfg.ID = dqlite.BootstrapID
 	} else {
-		// Figure out our ID.
-		id, err := db.MaxServerID(ctx)
-		if err != nil {
-			return err
-		}
-		cfg.ID = id + 1
+		// Generate a new ID.
+		cfg.ID = dqlite.GenerateID(cfg.Init.Address)
 	}
 
 	cfg.Address = cfg.Init.Address
