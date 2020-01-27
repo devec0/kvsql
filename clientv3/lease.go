@@ -15,7 +15,7 @@
 package clientv3
 
 import (
-	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
+	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
 
 	"golang.org/x/net/context"
 )

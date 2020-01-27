@@ -18,12 +18,12 @@ import (
 	"bytes"
 	"sync"
 
-	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
-	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/docker/docker/pkg/locker"
 	"github.com/freeekanayaka/kvsql/clientv3/driver"
 	"github.com/freeekanayaka/kvsql/db"
 	"github.com/freeekanayaka/kvsql/server"
+	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
+	"go.etcd.io/etcd/mvcc/mvccpb"
 	"golang.org/x/net/context"
 )
 

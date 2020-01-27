@@ -17,8 +17,8 @@ limitations under the License.
 package etcd3
 
 import (
-	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/freeekanayaka/kvsql/clientv3"
+	"go.etcd.io/etcd/mvcc/mvccpb"
 )
 
 type event struct {

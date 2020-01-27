@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
 	"github.com/freeekanayaka/kvsql/db"
+	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"golang.org/x/net/context"
 	utiltrace "k8s.io/utils/trace"
 )
