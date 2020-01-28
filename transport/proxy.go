@@ -9,23 +9,31 @@ import (
 )
 
 // Proxy copies data between the given network connections.
-func Proxy(src net.Conn, dst net.Conn) {
+func Proxy(tls net.Conn, unix net.Conn) {
 	go func() {
-		_, err := io.Copy(dst, src)
-		if err != nil {
+		_, err := io.Copy(unix, tls)
+		if err == nil {
+			// The client connected over TLS has closed the
+			// connection.
+			conn, ok := unix.(*net.UnixConn)
+			if !ok {
+				panic("not a unix connection")
+			}
+			conn.CloseRead()
+		} else {
 			fmt.Printf("Dqlite proxy TLS -> Unix: %v\n", err)
+			tls.Close()
+			unix.Close()
 		}
-		src.Close()
-		dst.Close()
 	}()
 
 	go func() {
-		_, err := io.Copy(src, dst)
+		_, err := io.Copy(tls, unix)
 		if err != nil {
 			fmt.Printf("Dqlite proxy Unix -> TLS: %v\n", err)
 		}
-		src.Close()
-		dst.Close()
+		tls.Close()
+		unix.Close()
 	}()
 }
 

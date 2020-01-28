@@ -197,7 +197,7 @@ func newNode(cfg *config.Config, dir string) (*dqlite.Node, error) {
 			return nil, errors.Wrap(err, "create pair of Unix sockets")
 		}
 
-		transport.Proxy(goUnix, tlsConn)
+		transport.Proxy(tlsConn, goUnix)
 
 		return cUnix, nil
 	}
