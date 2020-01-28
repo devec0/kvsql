@@ -85,7 +85,7 @@ func (m *Membership) Adjust() {
 	}
 	defer leader.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	info, err := leader.Leader(ctx)
@@ -158,8 +158,39 @@ func (m *Membership) Shutdown() {
 	}
 	defer leader.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// If the node which is shutting down is not a voter, there's nothing
+	// to do.
+	servers, err := leader.Cluster(ctx)
+	if err != nil {
+		return
+	}
+	id := uint64(0)
+	for _, server := range servers {
+		if server.Address != m.address {
+			continue
+		}
+		if server.Role != client.Voter {
+			return
+		}
+		id = server.ID
+		break
+	}
+	if id == 0 {
+		return
+	}
+
+	for _, server := range servers {
+		if server.Role == client.Voter || server.Address == m.address {
+			continue
+		}
+		if err := leader.Assign(ctx, server.ID, client.Voter); err == nil {
+			leader.Assign(ctx, id, client.Spare)
+			break
+		}
+	}
 
 	info, err := leader.Leader(ctx)
 	if err != nil {
