@@ -121,20 +121,29 @@ func (m *Membership) Adjust() {
 	}
 
 	voters := []client.NodeInfo{}
-	candidates := []client.NodeInfo{}
+	spares := []client.NodeInfo{}
 
 	for _, server := range servers {
 		switch server.Role {
 		case client.Voter:
 			voters = append(voters, server)
 		case client.Spare:
-			candidates = append(candidates, server)
+			spares = append(spares, server)
 		}
 	}
 
 	if len(voters) < 3 {
-		for _, server := range candidates {
+		for _, server := range spares {
 			if err := leader.Assign(ctx, server.ID, client.Voter); err == nil {
+				return
+			}
+		}
+	} else if len(voters) > 3 {
+		for _, server := range voters {
+			if server.Address == info.Address {
+				continue
+			}
+			if err := leader.Assign(ctx, server.ID, client.Spare); err == nil {
 				return
 			}
 		}
