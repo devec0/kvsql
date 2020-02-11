@@ -115,9 +115,9 @@ func (m *Membership) Adjust() {
 			}
 			if server.Role == client.Voter {
 				leader.Assign(ctx, server.ID, client.Spare)
-				return
 			}
 		}
+		return
 	}
 
 	voters := []client.NodeInfo{}
