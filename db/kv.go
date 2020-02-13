@@ -365,7 +365,7 @@ func currentRevision(ctx context.Context, tx *sql.Tx) (int64, error) {
 	if rev.Int64 == 0 {
 		panic("current revision is 0")
 	}
-	return rev.Int64, nil
+	return rev.Int64 - 1, nil
 }
 
 func newRevision(ctx context.Context, tx *sql.Tx) (int64, error) {
