@@ -23,7 +23,7 @@ func (b *Broadcaster) Subscribe(ctx context.Context, connect ConnectFunc) (chan 
 		}
 	}
 
-	sub := make(chan map[string]interface{}, 100)
+	sub := make(chan map[string]interface{}, 1024)
 	if b.subs == nil {
 		b.subs = map[chan map[string]interface{}]struct{}{}
 	}
