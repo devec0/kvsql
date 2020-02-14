@@ -24,7 +24,7 @@ var schema = []string{
 	`CREATE TABLE revision (
            id INTEGER PRIMARY KEY AUTOINCREMENT,
            t TEXT)`,
-	`INSERT INTO revision(id, t) VALUES(2, NULL)`, // Initial revision will be 1 (2 - 1)
+	`INSERT INTO revision(id, t) VALUES(1, NULL)`, // Initial revision will be 0 (1 - 1)
 	`CREATE TRIGGER key_value_revision
            AFTER INSERT ON key_value
            FOR EACH ROW

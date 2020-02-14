@@ -356,6 +356,18 @@ func (d *DB) Replay(ctx context.Context, key string, revision int64) ([]*KeyValu
 	return resp, nil
 }
 
+// Bump the current revision. This is used at startup just to make sure a
+// commit is made and the raft log has been applied.
+func (d *DB) Bump(ctx context.Context) error {
+	return d.tx(func(tx *sql.Tx) error {
+		_, err := newRevision(ctx, tx)
+		if err != nil {
+			return errors.Wrap(err, "bump current revision")
+		}
+		return nil
+	})
+}
+
 func currentRevision(ctx context.Context, tx *sql.Tx) (int64, error) {
 	row := tx.QueryRowContext(ctx, "SELECT id FROM revision")
 	rev := sql.NullInt64{}

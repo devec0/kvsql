@@ -96,6 +96,10 @@ func New(dir string) (*Server, error) {
 		}
 	}
 
+	if err := db.Bump(ctx); err != nil {
+		return nil, err
+	}
+
 	mux.HandleFunc("/watch", api.WatchHandleFunc(db, changes, subscribe))
 
 	cancelUpdater := startUpdater(db, cfg.Store, membership)
