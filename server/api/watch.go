@@ -21,7 +21,7 @@ type Event struct {
 
 type SubcribeFunc func(context.Context) (chan map[string]interface{}, error)
 
-func watchHandleFunc(db *model.DB, changes chan *model.KeyValue, subscribe SubcribeFunc) http.HandlerFunc {
+func WatchHandleFunc(db *model.DB, changes chan *model.KeyValue, subscribe SubcribeFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Receive change notifications.
 		if r.Method == "POST" {

@@ -54,16 +54,9 @@ func New(dir string) (*Server, error) {
 
 	changes := make(chan *db.KeyValue, 1024)
 
-	// It's safe to open the database object now, since no connection will
-	// be attempted until we actually make use of it.
-	db, err := db.Open(driver, "k8s")
-	if err != nil {
-		return nil, errors.Wrap(err, "open cluster database")
-	}
-
 	// Possibly initialize our ID, address and initial node store content.
 	if cfg.Init != nil {
-		if err := initConfig(ctx, cfg, db); err != nil {
+		if err := initConfig(ctx, cfg); err != nil {
 			return nil, err
 		}
 		if err := cfg.Save(dir); err != nil {
@@ -83,11 +76,16 @@ func New(dir string) (*Server, error) {
 	}
 
 	membership := membership.New(cfg.Address, cfg.Store, dqliteDialFunc(cfg.Cert))
-	mux := api.New(node.BindAddress(), db, membership, changes, subscribe)
-	api := &http.Server{Handler: mux}
+	mux := api.New(node.BindAddress(), membership, changes, subscribe)
+	apiserver := &http.Server{Handler: mux}
 
-	if err := startAPI(cfg, api); err != nil {
+	if err := startAPI(cfg, apiserver); err != nil {
 		return nil, err
+	}
+
+	db, err := db.Open(driver, "k8s")
+	if err != nil {
+		return nil, errors.Wrap(err, "open cluster database")
 	}
 
 	// If we are initializing a new server, update the cluster state
@@ -98,13 +96,15 @@ func New(dir string) (*Server, error) {
 		}
 	}
 
+	mux.HandleFunc("/watch", api.WatchHandleFunc(db, changes, subscribe))
+
 	cancelUpdater := startUpdater(db, cfg.Store, membership)
 
 	s := &Server{
 		dir:           dir,
 		address:       cfg.Address,
 		cert:          cfg.Cert,
-		api:           api,
+		api:           apiserver,
 		node:          node,
 		db:            db,
 		membership:    membership,
@@ -150,7 +150,7 @@ var driverIndex = 0
 
 // Initializes the configuration according to the content of the init.yaml
 // file, possibly obtaining a new node ID.
-func initConfig(ctx context.Context, cfg *config.Config, db *db.DB) error {
+func initConfig(ctx context.Context, cfg *config.Config) error {
 	servers := []client.NodeInfo{}
 
 	if len(cfg.Init.Cluster) == 0 {

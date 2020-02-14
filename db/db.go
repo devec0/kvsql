@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"time"
 
+	dqlitedriver "github.com/canonical/go-dqlite/driver"
 	"github.com/pkg/errors"
 )
 
@@ -23,6 +24,22 @@ func Open(driver string, dsn string) (*DB, error) {
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
+
+	for i := 0; i < 30; i++ {
+		err = db.Ping()
+		if err == nil {
+			break
+		}
+		cause := errors.Cause(err)
+		if cause != dqlitedriver.ErrNoAvailableLeader {
+			return nil, errors.Wrap(err, "ping database")
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "wait for database to be ready")
+	}
+
 	return &DB{db: db}, nil
 }
 
