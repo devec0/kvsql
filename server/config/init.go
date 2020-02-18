@@ -22,7 +22,7 @@ var initialFilenames = []string{
 	"cluster.crt",
 }
 
-// LoadInit load init.yaml if present, or return nil otherwise.
+// Load init.yaml if present, or return nil otherwise.
 func loadInit(dir string) (*Init, error) {
 	path := filepath.Join(dir, "init.yaml")
 

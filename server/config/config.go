@@ -1,9 +1,6 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
-
 	"github.com/canonical/go-dqlite/client"
 	"github.com/freeekanayaka/kvsql/transport"
 )
@@ -15,6 +12,7 @@ type Config struct {
 	Store   client.NodeStore // Hold members of the dqlite cluster
 	ID      uint64           // Server ID
 	Address string           // Server address
+	Update  *Update          // Configuration updates
 }
 
 // Load current the configuration from disk.
@@ -40,8 +38,13 @@ func Load(dir string) (*Config, error) {
 
 	id := uint64(0)
 	address := ""
+	var update *Update
 	if init == nil {
 		id, address, err = loadInfo(dir)
+		if err != nil {
+			return nil, err
+		}
+		update, err = loadUpdate(dir)
 		if err != nil {
 			return nil, err
 		}
@@ -53,6 +56,7 @@ func Load(dir string) (*Config, error) {
 		Cert:    cert,
 		ID:      id,
 		Address: address,
+		Update:  update,
 	}
 
 	return config, nil
@@ -61,9 +65,6 @@ func Load(dir string) (*Config, error) {
 // Save the configuration to disk.
 func (c *Config) Save(dir string) error {
 	if err := saveInfo(c.ID, c.Address, dir); err != nil {
-		return err
-	}
-	if err := os.Remove(filepath.Join(dir, "init.yaml")); err != nil {
 		return err
 	}
 	return nil

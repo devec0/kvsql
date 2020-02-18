@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/canonical/go-dqlite"
@@ -60,6 +62,9 @@ func New(dir string) (*Server, error) {
 			return nil, err
 		}
 		if err := cfg.Save(dir); err != nil {
+			return nil, err
+		}
+		if err := os.Remove(filepath.Join(dir, "init.yaml")); err != nil {
 			return nil, err
 		}
 	}
@@ -206,9 +211,30 @@ func newNode(cfg *config.Config, dir string) (*dqlite.Node, error) {
 		return cUnix, nil
 	}
 
+	// Possibly update the address
+	if cfg.Update != nil {
+		cfg.Address = cfg.Update.Address
+	}
+
 	node, err := dqlite.New(cfg.ID, cfg.Address, dir, dqlite.WithBindAddress("@"), dqlite.WithDialFunc(dial))
 	if err != nil {
 		return nil, errors.Wrap(err, "create dqlite node")
+	}
+
+	if cfg.Update != nil {
+		nodes := []dqlite.NodeInfo{{ID: cfg.ID, Address: cfg.Address}}
+		if err := node.Recover(nodes); err != nil {
+			return nil, errors.Wrap(err, "update configuration")
+		}
+		if err := cfg.Save(dir); err != nil {
+			return nil, err
+		}
+		if err := cfg.Store.Set(context.Background(), nodes); err != nil {
+			return nil, errors.Wrap(err, "update node store")
+		}
+		if err := os.Remove(filepath.Join(dir, "update.yaml")); err != nil {
+			return nil, errors.Wrap(err, "remove update.yaml")
+		}
 	}
 
 	if err := node.Start(); err != nil {
