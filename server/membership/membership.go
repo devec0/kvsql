@@ -10,16 +10,18 @@ import (
 
 // Membership manages dqlite cluster membership.
 type Membership struct {
-	address string
-	store   client.NodeStore
-	dial    client.DialFunc
+	address     string
+	bindAddress string
+	store       client.NodeStore
+	dial        client.DialFunc
 }
 
-func New(address string, store client.NodeStore, dial client.DialFunc) *Membership {
+func New(address, bindAddress string, store client.NodeStore, dial client.DialFunc) *Membership {
 	return &Membership{
-		address: address,
-		store:   store,
-		dial:    dial,
+		address:     address,
+		bindAddress: bindAddress,
+		store:       store,
+		dial:        dial,
 	}
 }
 
@@ -56,16 +58,33 @@ func (m *Membership) Add(id uint64, address string) error {
 }
 
 func (m *Membership) Leader() (string, error) {
+	// FIXME: this is a best-effort optimization to avoid establishing TLS
+	// connections if we locally know about the leader, but it won't work
+	// for spare nodes.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client, err := client.New(ctx, m.bindAddress)
+	if err != nil {
+		return "", errors.Wrap(err, "connect to dqlite node")
+	}
+	defer client.Close()
+
+	info, err := client.Leader(ctx)
+	if err != nil {
+		return "", errors.Wrap(err, "get leader")
+	}
+	if info != nil && info.Address != "" {
+		return info.Address, nil
+	}
+
 	leader, err := m.getLeader()
 	if err != nil {
 		return "", err
 	}
 	defer leader.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	info, err := leader.Leader(ctx)
+	info, err = leader.Leader(ctx)
 	if err != nil {
 		return "", err
 	}

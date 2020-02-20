@@ -80,7 +80,8 @@ func New(dir string) (*Server, error) {
 		return broadcaster.Subscribe(ctx, connectFunc)
 	}
 
-	membership := membership.New(cfg.Address, cfg.Store, dqliteDialFunc(cfg.Cert))
+	membership := membership.New(
+		cfg.Address, node.BindAddress(), cfg.Store, dqliteDialFunc(cfg.Cert))
 	mux := api.New(node.BindAddress(), membership, changes, subscribe)
 	apiserver := &http.Server{Handler: mux}
 
