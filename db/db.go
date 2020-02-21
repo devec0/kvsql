@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 
 	dqlitedriver "github.com/canonical/go-dqlite/driver"
@@ -81,8 +82,8 @@ func retry(f func() error) error {
 	var err error
 	for i := 0; i < 250; i++ {
 		if err = f(); err != nil {
-			if err.Error() == "database is locked" {
-				time.Sleep(time.Millisecond)
+			if strings.Contains(err.Error(), "database is locked") {
+				time.Sleep(10 * time.Millisecond)
 				continue
 			}
 			return err
