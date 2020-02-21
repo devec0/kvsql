@@ -49,7 +49,7 @@ func TestCreate_Existing(t *testing.T) {
 
 	err := store.Create(ctx, "/foo", obj, out, uint64(0))
 	if err, ok := err.(*storage.StorageError); ok {
-		assert.Equal(t, err.Code, 2)
+		assert.Equal(t, err.Code, storage.ErrCodeKeyExists)
 		assert.Equal(t, err.Key, "/foo")
 	} else {
 		t.Fatalf("Unexpected error: %v", err)

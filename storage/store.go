@@ -119,6 +119,9 @@ func (s *store) Get(ctx context.Context, key string, resourceVersion string, out
 	key = path.Join(s.pathPrefix, key)
 	getResp, err := s.client.KV.Get(ctx, key, s.getOps...)
 	if err != nil {
+		if strings.Contains(err.Error(), "context canceled") {
+			return storage.NewUnreachableError(key, 0)
+		}
 		return err
 	}
 
