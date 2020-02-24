@@ -137,7 +137,7 @@ func (s *Server) Notify(kv *db.KeyValue) {
 // Register a new Dqlite driver and return the registration name.
 func registerDriver(cfg *config.Config) (string, error) {
 	dial := dqliteDialFunc(cfg.Cert)
-	timeout := 10 * time.Second
+	timeout := time.Minute
 	driver, err := driver.New(
 		cfg.Store, driver.WithDialFunc(dial),
 		driver.WithConnectionTimeout(timeout),
