@@ -38,23 +38,15 @@ type Server struct {
 	cancelUpdater context.CancelFunc
 }
 
-func New(dir string) (*Server, error) {
+func New(dir string, full bool) (*Server, error) {
 	// Check if we're initializing a new node (i.e. there's an init.yaml).
 	cfg, err := config.Load(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the dqlite dial function and driver now, we might need it below to join.
-	driver, err := registerDriver(cfg)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	changes := make(chan *db.KeyValue, 1024)
 
 	// Possibly initialize our ID, address and initial node store content.
 	if cfg.Init != nil {
@@ -74,41 +66,58 @@ func New(dir string) (*Server, error) {
 		return nil, err
 	}
 
-	connectFunc, cancelWatcher := globalWatcher(changes)
-	broadcaster := &broadcast.Broadcaster{}
-	subscribe := func(ctx context.Context) (chan map[string]interface{}, error) {
-		return broadcaster.Subscribe(ctx, connectFunc)
-	}
-
 	membership := membership.New(
 		cfg.Address, node.BindAddress(), cfg.Store, dqliteDialFunc(cfg.Cert))
-	mux := api.New(node.BindAddress(), membership, changes, subscribe)
+	mux := api.New(node.BindAddress(), membership)
 	apiserver := &http.Server{Handler: mux}
 
 	if err := startAPI(cfg, apiserver); err != nil {
 		return nil, err
 	}
 
-	db, err := db.Open(driver, "k8s")
-	if err != nil {
-		return nil, errors.Wrap(err, "open cluster database")
+	var dbObj *db.DB
+
+	if full {
+		driver, err := registerDriver(cfg)
+		if err != nil {
+			return nil, err
+		}
+		dbObj, err = db.Open(driver, "k8s")
+		if err != nil {
+			return nil, errors.Wrap(err, "open cluster database")
+		}
 	}
 
 	// If we are initializing a new server, update the cluster state
 	// accordingly.
 	if cfg.Init != nil {
-		if err := initServer(ctx, cfg, db, membership); err != nil {
+		if err := initServer(ctx, cfg, dbObj, membership); err != nil {
 			return nil, err
 		}
 	}
 
-	if err := db.Bump(ctx); err != nil {
-		return nil, err
+	if full {
+		if err := dbObj.Bump(ctx); err != nil {
+			return nil, err
+		}
 	}
 
-	mux.HandleFunc("/watch", api.WatchHandleFunc(db, changes, subscribe))
+	var changes chan *db.KeyValue
+	var cancelUpdater context.CancelFunc
+	var cancelWatcher context.CancelFunc
 
-	cancelUpdater := startUpdater(db, cfg.Store, membership)
+	if full {
+		changes = make(chan *db.KeyValue, 1024)
+
+		connectFunc, cancel := globalWatcher(changes)
+		broadcaster := &broadcast.Broadcaster{}
+		subscribe := func(ctx context.Context) (chan map[string]interface{}, error) {
+			return broadcaster.Subscribe(ctx, connectFunc)
+		}
+		mux.HandleFunc("/watch", api.WatchHandleFunc(dbObj, changes, subscribe))
+		cancelUpdater = startUpdater(dbObj, cfg.Store, membership)
+		cancelWatcher = cancel
+	}
 
 	s := &Server{
 		dir:           dir,
@@ -116,7 +125,7 @@ func New(dir string) (*Server, error) {
 		cert:          cfg.Cert,
 		api:           apiserver,
 		node:          node,
-		db:            db,
+		db:            dbObj,
 		membership:    membership,
 		changes:       changes,
 		cancelWatcher: cancelWatcher,
@@ -401,12 +410,16 @@ func (s *Server) Cert() *transport.Cert {
 }
 
 func (s *Server) Close(ctx context.Context) error {
-	s.cancelUpdater()
+	if s.cancelUpdater != nil {
+		s.cancelUpdater()
+	}
 	if s.cancelWatcher != nil {
 		s.cancelWatcher()
 	}
-	if err := s.db.Close(); err != nil {
-		return err
+	if s.db != nil {
+		if err := s.db.Close(); err != nil {
+			return err
+		}
 	}
 	s.membership.Shutdown()
 	if err := s.api.Shutdown(ctx); err != nil {

@@ -21,7 +21,7 @@ func TestNew_FirstNode_Init(t *testing.T) {
 	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
 
-	server, err := server.New(dir)
+	server, err := server.New(dir, true)
 	require.NoError(t, err)
 
 	require.NoError(t, server.Close(context.Background()))
@@ -32,12 +32,12 @@ func TestNew_FirstNode_Restart(t *testing.T) {
 	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
 
-	s, err := server.New(dir)
+	s, err := server.New(dir, true)
 	require.NoError(t, err)
 
 	require.NoError(t, s.Close(context.Background()))
 
-	s, err = server.New(dir)
+	s, err = server.New(dir, true)
 	require.NoError(t, err)
 
 	require.NoError(t, s.Close(context.Background()))
@@ -48,14 +48,14 @@ func TestNew_SecondNode_Init(t *testing.T) {
 	dir1, cleanup1 := newDirWithInit(t, init1)
 	defer cleanup1()
 
-	s1, err := server.New(dir1)
+	s1, err := server.New(dir1, true)
 	require.NoError(t, err)
 
 	init2 := &config.Init{Address: "localhost:9992", Cluster: []string{"localhost:9991"}}
 	dir2, cleanup2 := newDirWithInit(t, init2)
 	defer cleanup2()
 
-	s2, err := server.New(dir2)
+	s2, err := server.New(dir2, true)
 	require.NoError(t, err)
 
 	require.NoError(t, s1.Close(context.Background()))
@@ -68,7 +68,7 @@ func TestApi_Cluster_GET(t *testing.T) {
 	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
 
-	server, err := server.New(dir)
+	server, err := server.New(dir, true)
 	require.NoError(t, err)
 	defer server.Close(context.Background())
 

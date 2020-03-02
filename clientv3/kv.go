@@ -81,7 +81,7 @@ func newKV(cfg Config) (*kv, error) {
 		return kv, nil
 	}
 
-	server, err := server.New(cfg.Dir)
+	server, err := server.New(cfg.Dir, true)
 	if err != nil {
 		return nil, err
 	}
