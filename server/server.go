@@ -106,7 +106,6 @@ func New(dir string, full bool) (*Server, error) {
 	}
 
 	var changes chan *db.KeyValue
-	var cancelUpdater context.CancelFunc
 	var cancelWatcher context.CancelFunc
 	var cancelKine context.CancelFunc
 
@@ -119,7 +118,6 @@ func New(dir string, full bool) (*Server, error) {
 			return broadcaster.Subscribe(ctx, connectFunc)
 		}
 		mux.HandleFunc("/watch", api.WatchHandleFunc(dbObj, changes, subscribe))
-		cancelUpdater = startUpdater(dbObj, cfg.Store, membership)
 		cancelWatcher = cancel
 	} else {
 		kinedriver.Dialer = dial
@@ -136,6 +134,8 @@ func New(dir string, full bool) (*Server, error) {
 		}
 		cancelKine = cancel
 	}
+
+	cancelUpdater := startUpdater(dbObj, cfg.Store, membership)
 
 	s := &Server{
 		dir:           dir,
@@ -403,18 +403,20 @@ func startUpdater(db *db.DB, store client.NodeStore, membership *membership.Memb
 			}
 		}
 	}()
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Minute):
-				if err := db.Cleanup(ctx); err != nil {
-					fmt.Println("Failed to purge expired TTL entries")
+	if db != nil {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Minute):
+					if err := db.Cleanup(ctx); err != nil {
+						fmt.Println("Failed to purge expired TTL entries")
+					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 	return cancel
 }
 
