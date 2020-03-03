@@ -22,6 +22,8 @@ import (
 	"github.com/freeekanayaka/kvsql/server/membership"
 	"github.com/freeekanayaka/kvsql/transport"
 	"github.com/pkg/errors"
+	kinedriver "github.com/rancher/kine/pkg/drivers/dqlite"
+	"github.com/rancher/kine/pkg/endpoint"
 )
 
 // Server sets up a single dqlite node and serves the cluster management API.
@@ -36,6 +38,7 @@ type Server struct {
 	changes       chan *db.KeyValue
 	cancelWatcher context.CancelFunc
 	cancelUpdater context.CancelFunc
+	cancelKine    context.CancelFunc
 }
 
 func New(dir string, full bool) (*Server, error) {
@@ -66,8 +69,8 @@ func New(dir string, full bool) (*Server, error) {
 		return nil, err
 	}
 
-	membership := membership.New(
-		cfg.Address, node.BindAddress(), cfg.Store, dqliteDialFunc(cfg.Cert))
+	dial := dqliteDialFunc(cfg.Cert)
+	membership := membership.New(cfg.Address, node.BindAddress(), cfg.Store, dial)
 	mux := api.New(node.BindAddress(), membership)
 	apiserver := &http.Server{Handler: mux}
 
@@ -105,6 +108,7 @@ func New(dir string, full bool) (*Server, error) {
 	var changes chan *db.KeyValue
 	var cancelUpdater context.CancelFunc
 	var cancelWatcher context.CancelFunc
+	var cancelKine context.CancelFunc
 
 	if full {
 		changes = make(chan *db.KeyValue, 1024)
@@ -117,6 +121,20 @@ func New(dir string, full bool) (*Server, error) {
 		mux.HandleFunc("/watch", api.WatchHandleFunc(dbObj, changes, subscribe))
 		cancelUpdater = startUpdater(dbObj, cfg.Store, membership)
 		cancelWatcher = cancel
+	} else {
+		kinedriver.Dialer = dial
+		socket := filepath.Join(dir, "kine.sock")
+		peers := filepath.Join(dir, "servers.sql")
+		config := endpoint.Config{
+			Listener: fmt.Sprintf("unix://%s", socket),
+			Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s", peers),
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		_, err := endpoint.Listen(ctx, config)
+		if err != nil {
+			return nil, errors.Wrap(err, "kine")
+		}
+		cancelKine = cancel
 	}
 
 	s := &Server{
@@ -130,6 +148,7 @@ func New(dir string, full bool) (*Server, error) {
 		changes:       changes,
 		cancelWatcher: cancelWatcher,
 		cancelUpdater: cancelUpdater,
+		cancelKine:    cancelKine,
 	}
 
 	return s, nil
@@ -270,8 +289,10 @@ func startAPI(cfg *config.Config, api *http.Server) error {
 
 func initServer(ctx context.Context, cfg *config.Config, db *db.DB, membership *membership.Membership) error {
 	if len(cfg.Init.Cluster) == 0 {
-		if err := db.CreateSchema(ctx); err != nil {
-			return err
+		if db != nil {
+			if err := db.CreateSchema(ctx); err != nil {
+				return err
+			}
 		}
 	} else {
 		if err := membership.Add(cfg.ID, cfg.Address); err != nil {
@@ -424,6 +445,9 @@ func (s *Server) Close(ctx context.Context) error {
 	s.membership.Shutdown()
 	if err := s.api.Shutdown(ctx); err != nil {
 		return errors.Wrap(err, "shutdown API server")
+	}
+	if s.cancelKine != nil {
+		s.cancelKine()
 	}
 	if err := s.node.Close(); err != nil {
 		return errors.Wrap(err, "stop dqlite node")

@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/etcd/clientv3"
 )
 
 func TestNew_FirstNode_Init(t *testing.T) {
@@ -83,6 +85,25 @@ func TestApi_Cluster_GET(t *testing.T) {
 	assert.Len(t, servers, 1)
 	assert.Equal(t, servers[0].ID, uint64(0x2dc171858c3155be))
 	assert.Equal(t, servers[0].Address, addr)
+}
+
+func TestNew_FirstNode_Kine(t *testing.T) {
+	init := &config.Init{Address: "localhost:9991"}
+	dir, cleanup := newDirWithInit(t, init)
+	defer cleanup()
+
+	server, err := server.New(dir, false)
+	require.NoError(t, err)
+
+	sock := filepath.Join(dir, "kine.sock")
+	cfg := clientv3.Config{Endpoints: []string{fmt.Sprintf("unix://%s", sock)}}
+	client, err := clientv3.New(cfg)
+	require.NoError(t, err)
+
+	_, err = client.Get(context.Background(), "/")
+	require.NoError(t, err)
+
+	require.NoError(t, server.Close(context.Background()))
 }
 
 // Return a new temporary directory populated with the test cluster certificate
