@@ -24,6 +24,7 @@ import (
 	"github.com/pkg/errors"
 	kinedriver "github.com/rancher/kine/pkg/drivers/dqlite"
 	"github.com/rancher/kine/pkg/endpoint"
+	"github.com/sirupsen/logrus"
 )
 
 // Server sets up a single dqlite node and serves the cluster management API.
@@ -121,8 +122,10 @@ func New(dir string, full bool) (*Server, error) {
 		cancelWatcher = cancel
 	} else {
 		kinedriver.Dialer = dial
+		kinedriver.Logger = dqliteLogFunc
 		socket := filepath.Join(dir, "kine.sock")
 		peers := filepath.Join(dir, "servers.sql")
+		// logrus.SetLevel(logrus.DebugLevel)
 		config := endpoint.Config{
 			Listener: fmt.Sprintf("unix://%s", socket),
 			Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s", peers),
@@ -455,4 +458,18 @@ func (s *Server) Close(ctx context.Context) error {
 		return errors.Wrap(err, "stop dqlite node")
 	}
 	return nil
+}
+
+func dqliteLogFunc(l client.LogLevel, format string, a ...interface{}) {
+	msg := fmt.Sprintf("dqlite: "+format, a...)
+	switch l {
+	case client.LogDebug:
+		logrus.Debug(msg)
+	case client.LogInfo:
+		logrus.Info(msg)
+	case client.LogWarn:
+		logrus.Warn(msg)
+	case client.LogError:
+		logrus.Error(msg)
+	}
 }
