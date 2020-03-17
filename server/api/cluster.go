@@ -22,6 +22,16 @@ func clusterHandler(membership *membership.Membership) http.Handler {
 			}
 			resp.WriteEntity(servers)
 		}))
+	ws.Route(ws.DELETE("/{address}").To(
+		func(req *restful.Request, resp *restful.Response) {
+			address := req.PathParameter("address")
+			err := membership.Remove(address)
+			if err != nil {
+				msg := fmt.Sprintf("500 can't remove node: %v", err)
+				http.Error(resp, msg, http.StatusServiceUnavailable)
+				return
+			}
+		}).Param(ws.PathParameter("address", "node address").DataType("string")))
 
 	c := restful.NewContainer()
 	c.Add(ws)

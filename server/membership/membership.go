@@ -56,6 +56,44 @@ func (m *Membership) Add(id uint64, address string) error {
 	if err := leader.Add(ctx, info); err != nil {
 		return errors.Wrap(err, "join cluster")
 	}
+
+	return nil
+}
+
+func (m *Membership) Remove(address string) error {
+	if address == m.address {
+		return fmt.Errorf("can't remove ourselves")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	leader, err := m.getLeader()
+	if err != nil {
+		return err
+	}
+	defer leader.Close()
+
+	servers, err := leader.Cluster(ctx)
+	if err != nil {
+		return err
+	}
+
+	id := uint64(0)
+	for _, server := range servers {
+		if server.Address == address {
+			id = server.ID
+			break
+		}
+	}
+
+	if id == 0 {
+		return fmt.Errorf("no server exists with address %s", address)
+	}
+
+	if err := leader.Remove(ctx, id); err != nil {
+		return errors.Wrap(err, "remove node")
+	}
+
 	return nil
 }
 
