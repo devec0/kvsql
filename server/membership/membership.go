@@ -173,7 +173,11 @@ func (m *Membership) Adjust() {
 				continue
 			}
 			if server.Role == client.Voter {
-				leader.Assign(ctx, server.ID, client.Spare)
+				// XXX: assign the stand-by role first, so that
+				// nodes learns its not a voter and won't conver to candidate
+				if err := leader.Assign(ctx, server.ID, client.StandBy); err == nil {
+					leader.Assign(ctx, server.ID, client.Spare)
+				}
 			}
 		}
 		return
@@ -202,8 +206,12 @@ func (m *Membership) Adjust() {
 			if server.Address == info.Address {
 				continue
 			}
-			if err := leader.Assign(ctx, server.ID, client.Spare); err == nil {
-				return
+			// XXX: assign the stand-by role first, so that
+			// nodes learns its not a voter and won't conver to candidate
+			if err := leader.Assign(ctx, server.ID, client.StandBy); err == nil {
+				if err := leader.Assign(ctx, server.ID, client.Spare); err == nil {
+					return
+				}
 			}
 		}
 	}
