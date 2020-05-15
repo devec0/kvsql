@@ -272,7 +272,7 @@ func (m *Membership) Shutdown() {
 }
 
 func (m *Membership) getLeader() (*client.Client, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return client.FindLeader(ctx, m.store, client.WithDialFunc(m.dial), client.WithLogFunc(dqliteLogFunc))
 }

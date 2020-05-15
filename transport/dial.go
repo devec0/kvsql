@@ -16,7 +16,7 @@ func Dial(ctx context.Context, cert *Cert, addr string) (net.Conn, error) {
 	// TODO: honor the given context's deadline
 	// deadline, _ := ctx.Deadline()
 	// timeout := time.Until(deadline)
-	timeout := 5 * time.Second
+	timeout := 15 * time.Second
 	dialer := &net.Dialer{Timeout: timeout}
 
 	cfg := &tls.Config{
