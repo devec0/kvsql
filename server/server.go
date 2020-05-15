@@ -170,7 +170,9 @@ func registerDriver(cfg *config.Config) (string, error) {
 	dial := dqliteDialFunc(cfg.Cert)
 	timeout := time.Minute
 	driver, err := driver.New(
-		cfg.Store, driver.WithDialFunc(dial),
+		cfg.Store,
+		driver.WithDialFunc(dial),
+		driver.WithLogFunc(dqliteLogFunc),
 		driver.WithConnectionTimeout(timeout),
 		driver.WithContextTimeout(timeout),
 	)
