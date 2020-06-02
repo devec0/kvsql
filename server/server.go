@@ -15,8 +15,6 @@ import (
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/client"
 	"github.com/canonical/go-dqlite/driver"
-	"github.com/freeekanayaka/kvsql/db"
-	"github.com/freeekanayaka/kvsql/pkg/broadcast"
 	"github.com/freeekanayaka/kvsql/server/api"
 	"github.com/freeekanayaka/kvsql/server/config"
 	"github.com/freeekanayaka/kvsql/server/membership"
@@ -34,10 +32,7 @@ type Server struct {
 	cert          *transport.Cert        // TLS configuration
 	api           *http.Server           // API server
 	node          *dqlite.Node           // Dqlite node
-	db            *db.DB                 // Database connection
 	membership    *membership.Membership // Cluster membership
-	changes       chan *db.KeyValue
-	cancelWatcher context.CancelFunc
 	cancelUpdater context.CancelFunc
 	cancelKine    context.CancelFunc
 }
@@ -79,19 +74,13 @@ func New(dir string) (*Server, error) {
 		return nil, err
 	}
 
-	var dbObj *db.DB
-
 	// If we are initializing a new server, update the cluster state
 	// accordingly.
 	if cfg.Init != nil {
-		if err := initServer(ctx, cfg, dbObj, membership); err != nil {
+		if err := initServer(ctx, cfg, membership); err != nil {
 			return nil, err
 		}
 	}
-
-	var changes chan *db.KeyValue
-	var cancelWatcher context.CancelFunc
-	var cancelKine context.CancelFunc
 
 	kinedriver.Dialer = dial
 	kinedriver.Logger = dqliteLogFunc
@@ -102,13 +91,12 @@ func New(dir string) (*Server, error) {
 		Listener: fmt.Sprintf("unix://%s", socket),
 		Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s", peers),
 	}
-	kineCtx, kineCancel := context.WithCancel(context.Background())
+	kineCtx, cancelKine := context.WithCancel(context.Background())
 	if _, err := endpoint.Listen(kineCtx, config); err != nil {
 		return nil, errors.Wrap(err, "kine")
 	}
-	cancelKine = kineCancel
 
-	cancelUpdater := startUpdater(dbObj, cfg.Store, membership)
+	cancelUpdater := startUpdater(cfg.Store, membership)
 
 	s := &Server{
 		dir:           dir,
@@ -116,10 +104,7 @@ func New(dir string) (*Server, error) {
 		cert:          cfg.Cert,
 		api:           apiserver,
 		node:          node,
-		db:            dbObj,
 		membership:    membership,
-		changes:       changes,
-		cancelWatcher: cancelWatcher,
 		cancelUpdater: cancelUpdater,
 		cancelKine:    cancelKine,
 	}
@@ -129,10 +114,6 @@ func New(dir string) (*Server, error) {
 
 func (s *Server) Address() string {
 	return s.address
-}
-
-func (s *Server) Notify(kv *db.KeyValue) {
-	s.changes <- kv
 }
 
 // Register a new Dqlite driver and return the registration name.
@@ -262,14 +243,8 @@ func startAPI(cfg *config.Config, api *http.Server) error {
 	return nil
 }
 
-func initServer(ctx context.Context, cfg *config.Config, db *db.DB, membership *membership.Membership) error {
-	if len(cfg.Init.Cluster) == 0 {
-		if db != nil {
-			if err := db.CreateSchema(ctx); err != nil {
-				return err
-			}
-		}
-	} else {
+func initServer(ctx context.Context, cfg *config.Config, membership *membership.Membership) error {
+	if len(cfg.Init.Cluster) > 0 {
 		if err := membership.Add(cfg.ID, cfg.Address); err != nil {
 			return err
 		}
@@ -325,30 +300,7 @@ func dqliteDialFunc(cert *transport.Cert) client.DialFunc {
 	}
 }
 
-func globalWatcher(changes chan *db.KeyValue) (broadcast.ConnectFunc, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
-	f := func() (chan map[string]interface{}, error) {
-		result := make(chan map[string]interface{}, 100)
-		go func() {
-			defer close(result)
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case e := <-changes:
-					result <- map[string]interface{}{
-						"data": e,
-					}
-				}
-			}
-		}()
-
-		return result, nil
-	}
-	return f, cancel
-}
-
-func startUpdater(db *db.DB, store client.NodeStore, membership *membership.Membership) context.CancelFunc {
+func startUpdater(store client.NodeStore, membership *membership.Membership) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		for {
@@ -378,20 +330,6 @@ func startUpdater(db *db.DB, store client.NodeStore, membership *membership.Memb
 			}
 		}
 	}()
-	if db != nil {
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(time.Minute):
-					if err := db.Cleanup(ctx); err != nil {
-						fmt.Println("Failed to purge expired TTL entries")
-					}
-				}
-			}
-		}()
-	}
 	return cancel
 }
 
@@ -399,26 +337,12 @@ func (s *Server) Leader(ctx context.Context) (string, error) {
 	return s.membership.Leader()
 }
 
-func (s *Server) DB() *db.DB {
-	return s.db
-}
-
 func (s *Server) Cert() *transport.Cert {
 	return s.cert
 }
 
 func (s *Server) Close(ctx context.Context) error {
-	if s.cancelUpdater != nil {
-		s.cancelUpdater()
-	}
-	if s.cancelWatcher != nil {
-		s.cancelWatcher()
-	}
-	if s.db != nil {
-		if err := s.db.Close(); err != nil {
-			return err
-		}
-	}
+	s.cancelUpdater()
 	s.membership.Shutdown()
 	if err := s.api.Shutdown(ctx); err != nil {
 		return errors.Wrap(err, "shutdown API server")
