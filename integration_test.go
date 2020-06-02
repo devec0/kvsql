@@ -111,7 +111,7 @@ func newStore(t testing.TB) (storage.Interface, func()) {
 	init := &config.Init{Address: "localhost:9991"}
 	dir, dirCleanup := newDirWithInit(t, init)
 
-	server, err := server.New(dir, false)
+	server, err := server.New(dir)
 	require.NoError(t, err)
 
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)

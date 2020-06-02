@@ -42,7 +42,7 @@ type Server struct {
 	cancelKine    context.CancelFunc
 }
 
-func New(dir string, full bool) (*Server, error) {
+func New(dir string) (*Server, error) {
 	// Check if we're initializing a new node (i.e. there's an init.yaml).
 	cfg, err := config.Load(dir)
 	if err != nil {
@@ -81,17 +81,6 @@ func New(dir string, full bool) (*Server, error) {
 
 	var dbObj *db.DB
 
-	if full {
-		driver, err := registerDriver(cfg)
-		if err != nil {
-			return nil, err
-		}
-		dbObj, err = db.Open(driver, "k8s")
-		if err != nil {
-			return nil, errors.Wrap(err, "open cluster database")
-		}
-	}
-
 	// If we are initializing a new server, update the cluster state
 	// accordingly.
 	if cfg.Init != nil {
@@ -100,43 +89,24 @@ func New(dir string, full bool) (*Server, error) {
 		}
 	}
 
-	if full {
-		if err := dbObj.Bump(ctx); err != nil {
-			return nil, err
-		}
-	}
-
 	var changes chan *db.KeyValue
 	var cancelWatcher context.CancelFunc
 	var cancelKine context.CancelFunc
 
-	if full {
-		changes = make(chan *db.KeyValue, 1024)
-
-		connectFunc, cancel := globalWatcher(changes)
-		broadcaster := &broadcast.Broadcaster{}
-		subscribe := func(ctx context.Context) (chan map[string]interface{}, error) {
-			return broadcaster.Subscribe(ctx, connectFunc)
-		}
-		mux.HandleFunc("/watch", api.WatchHandleFunc(dbObj, changes, subscribe))
-		cancelWatcher = cancel
-	} else {
-		kinedriver.Dialer = dial
-		kinedriver.Logger = dqliteLogFunc
-		socket := filepath.Join(dir, "kine.sock")
-		peers := filepath.Join(dir, "servers.sql")
-		// logrus.SetLevel(logrus.DebugLevel)
-		config := endpoint.Config{
-			Listener: fmt.Sprintf("unix://%s", socket),
-			Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s", peers),
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		_, err := endpoint.Listen(ctx, config)
-		if err != nil {
-			return nil, errors.Wrap(err, "kine")
-		}
-		cancelKine = cancel
+	kinedriver.Dialer = dial
+	kinedriver.Logger = dqliteLogFunc
+	socket := filepath.Join(dir, "kine.sock")
+	peers := filepath.Join(dir, "servers.sql")
+	// logrus.SetLevel(logrus.DebugLevel)
+	config := endpoint.Config{
+		Listener: fmt.Sprintf("unix://%s", socket),
+		Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s", peers),
 	}
+	kineCtx, kineCancel := context.WithCancel(context.Background())
+	if _, err := endpoint.Listen(kineCtx, config); err != nil {
+		return nil, errors.Wrap(err, "kine")
+	}
+	cancelKine = kineCancel
 
 	cancelUpdater := startUpdater(dbObj, cfg.Store, membership)
 
