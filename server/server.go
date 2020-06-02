@@ -86,10 +86,16 @@ func New(dir string) (*Server, error) {
 	kinedriver.Logger = dqliteLogFunc
 	socket := filepath.Join(dir, "kine.sock")
 	peers := filepath.Join(dir, "cluster.yaml")
+
+	driverName, err := registerDriver(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	// logrus.SetLevel(logrus.DebugLevel)
 	config := endpoint.Config{
 		Listener: fmt.Sprintf("unix://%s", socket),
-		Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s", peers),
+		Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s&driver-name=%s", peers, driverName),
 	}
 	kineCtx, cancelKine := context.WithCancel(context.Background())
 	if _, err := endpoint.Listen(kineCtx, config); err != nil {
