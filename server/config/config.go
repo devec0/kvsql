@@ -1,26 +1,48 @@
 package config
 
 import (
-	"github.com/canonical/go-dqlite/client"
-	"github.com/freeekanayaka/kvsql/transport"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"io/ioutil"
+	"path/filepath"
+
+	"github.com/pkg/errors"
 )
 
 // Config holds the server configuraton loaded from disk.
 type Config struct {
-	Cert    *transport.Cert  // TLS configuration
-	Init    *Init            // Initialization parameters, for new servers.
-	Store   client.NodeStore // Hold members of the dqlite cluster
-	ID      uint64           // Server ID
-	Address string           // Server address
-	Update  *Update          // Configuration updates
+	KeyPair tls.Certificate
+	Pool    *x509.CertPool
+	Init    *Init   // Initialization parameters, for new servers.
+	Address string  // Server address
+	Update  *Update // Configuration updates
 }
 
 // Load current the configuration from disk.
 func Load(dir string) (*Config, error) {
-	// Load the TLS certificates.
-	cert, err := transport.LoadCert(dir)
-	if err != nil {
+	// Migrate the legacy node store.
+	if err := migrateNodeStore(dir); err != nil {
 		return nil, err
+	}
+
+	// Load the TLS certificates.
+	crt := filepath.Join(dir, "cluster.crt")
+	key := filepath.Join(dir, "cluster.key")
+
+	keypair, err := tls.LoadX509KeyPair(crt, key)
+	if err != nil {
+		return nil, errors.Wrap(err, "load keypair")
+	}
+
+	data, err := ioutil.ReadFile(crt)
+	if err != nil {
+		return nil, errors.Wrap(err, "read certificate")
+	}
+
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(data) {
+		return nil, fmt.Errorf("bad certificate")
 	}
 
 	// Check if we're initializing a new node (i.e. there's an init.yaml).
@@ -29,21 +51,8 @@ func Load(dir string) (*Config, error) {
 		return nil, err
 	}
 
-	// Open the node store, effectively creating a new empty one if we're
-	// initializing.
-	store, err := loadNodeStore(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	id := uint64(0)
-	address := ""
 	var update *Update
 	if init == nil {
-		id, address, err = loadInfo(dir)
-		if err != nil {
-			return nil, err
-		}
 		update, err = loadUpdate(dir)
 		if err != nil {
 			return nil, err
@@ -51,21 +60,11 @@ func Load(dir string) (*Config, error) {
 	}
 
 	config := &Config{
+		KeyPair: keypair,
+		Pool:    pool,
 		Init:    init,
-		Store:   store,
-		Cert:    cert,
-		ID:      id,
-		Address: address,
 		Update:  update,
 	}
 
 	return config, nil
-}
-
-// Save the configuration to disk.
-func (c *Config) Save(dir string) error {
-	if err := saveInfo(c.ID, c.Address, dir); err != nil {
-		return err
-	}
-	return nil
 }

@@ -1,40 +1,28 @@
 package server
 
 import (
-	"bufio"
 	"context"
-	"database/sql"
 	"fmt"
-	"net"
-	"net/http"
-	"net/url"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/canonical/go-dqlite"
+	"github.com/canonical/go-dqlite/app"
 	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/driver"
-	"github.com/freeekanayaka/kvsql/server/api"
 	"github.com/freeekanayaka/kvsql/server/config"
-	"github.com/freeekanayaka/kvsql/server/membership"
-	"github.com/freeekanayaka/kvsql/transport"
+	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
-	kinedriver "github.com/rancher/kine/pkg/drivers/dqlite"
 	"github.com/rancher/kine/pkg/endpoint"
-	"github.com/sirupsen/logrus"
 )
 
 // Server sets up a single dqlite node and serves the cluster management API.
 type Server struct {
-	dir           string                 // Data directory
-	address       string                 // Network address
-	cert          *transport.Cert        // TLS configuration
-	api           *http.Server           // API server
-	node          *dqlite.Node           // Dqlite node
-	membership    *membership.Membership // Cluster membership
-	cancelUpdater context.CancelFunc
-	cancelKine    context.CancelFunc
+	dir        string // Data directory
+	address    string // Network address
+	app        *app.App
+	cancelKine context.CancelFunc
 }
 
 func New(dir string) (*Server, error) {
@@ -44,334 +32,94 @@ func New(dir string) (*Server, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Possibly initialize our ID, address and initial node store content.
-	if cfg.Init != nil {
-		if err := initConfig(ctx, cfg); err != nil {
-			return nil, err
-		}
-		if err := cfg.Save(dir); err != nil {
-			return nil, err
-		}
-		if err := os.Remove(filepath.Join(dir, "init.yaml")); err != nil {
-			return nil, err
-		}
-	}
-
-	node, err := newNode(cfg, dir)
-	if err != nil {
-		return nil, err
-	}
-
-	dial := dqliteDialFunc(cfg.Cert)
-	membership := membership.New(cfg.Address, node.BindAddress(), cfg.Store, dial)
-	mux := api.New(node.BindAddress(), membership)
-	apiserver := &http.Server{Handler: mux}
-
-	if err := startAPI(cfg, apiserver); err != nil {
-		return nil, err
-	}
-
-	// If we are initializing a new server, update the cluster state
-	// accordingly.
-	if cfg.Init != nil {
-		if err := initServer(ctx, cfg, membership); err != nil {
-			return nil, err
-		}
-	}
-
-	kinedriver.Dialer = dial
-	kinedriver.Logger = dqliteLogFunc
-	socket := filepath.Join(dir, "kine.sock")
-	peers := filepath.Join(dir, "cluster.yaml")
-
-	driverName, err := registerDriver(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	// logrus.SetLevel(logrus.DebugLevel)
-	config := endpoint.Config{
-		Listener: fmt.Sprintf("unix://%s", socket),
-		Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s&driver-name=%s", peers, driverName),
-	}
-	kineCtx, cancelKine := context.WithCancel(context.Background())
-	if _, err := endpoint.Listen(kineCtx, config); err != nil {
-		return nil, errors.Wrap(err, "kine")
-	}
-
-	cancelUpdater := startUpdater(cfg.Store, membership)
-
-	s := &Server{
-		dir:           dir,
-		address:       cfg.Address,
-		cert:          cfg.Cert,
-		api:           apiserver,
-		node:          node,
-		membership:    membership,
-		cancelUpdater: cancelUpdater,
-		cancelKine:    cancelKine,
-	}
-
-	return s, nil
-}
-
-func (s *Server) Address() string {
-	return s.address
-}
-
-// Register a new Dqlite driver and return the registration name.
-func registerDriver(cfg *config.Config) (string, error) {
-	dial := dqliteDialFunc(cfg.Cert)
-	timeout := time.Minute
-	driver, err := driver.New(
-		cfg.Store,
-		driver.WithDialFunc(dial),
-		driver.WithLogFunc(dqliteLogFunc),
-		driver.WithConnectionTimeout(timeout),
-		driver.WithContextTimeout(timeout),
-	)
-	if err != nil {
-		return "", errors.Wrap(err, "create dqlite driver")
-	}
-
-	// Create a unique name to pass to sql.Register.
-	driverIndex++
-	name := fmt.Sprintf("dqlite-%d", driverIndex)
-
-	sql.Register(name, driver)
-
-	return name, nil
-}
-
-var driverIndex = 0
-
-// Initializes the configuration according to the content of the init.yaml
-// file, possibly obtaining a new node ID.
-func initConfig(ctx context.Context, cfg *config.Config) error {
-	servers := []client.NodeInfo{}
-
-	if len(cfg.Init.Cluster) == 0 {
-		servers = append(servers, client.NodeInfo{
-			Address: cfg.Init.Address,
-		})
-	} else {
-		for _, address := range cfg.Init.Cluster {
-			servers = append(servers, client.NodeInfo{
-				Address: address,
-			})
-		}
-	}
-
-	if err := cfg.Store.Set(context.Background(), servers); err != nil {
-		return errors.Wrap(err, "initialize node store")
-	}
-
-	if len(cfg.Init.Cluster) == 0 {
-		cfg.ID = dqlite.BootstrapID
-	} else {
-		// Generate a new ID.
-		cfg.ID = dqlite.GenerateID(cfg.Init.Address)
-	}
-
-	cfg.Address = cfg.Init.Address
-
-	return nil
-}
-
-// Create a new dqlite node.
-func newNode(cfg *config.Config, dir string) (*dqlite.Node, error) {
-	// Wrap the regular dial function which one that also proxies the TLS
-	// connection, since the raft connect function only supports Unix and
-	// TCP connections.
-	dial := func(ctx context.Context, addr string) (net.Conn, error) {
-		dial := dqliteDialFunc(cfg.Cert)
-		tlsConn, err := dial(ctx, addr)
+	if cfg.Update != nil {
+		info := client.NodeInfo{}
+		path := filepath.Join(dir, "info.yaml")
+		data, err := ioutil.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}
-		goUnix, cUnix, err := transport.Socketpair()
-		if err != nil {
-			return nil, errors.Wrap(err, "create pair of Unix sockets")
-		}
-
-		transport.Proxy(tlsConn, goUnix)
-
-		return cUnix, nil
-	}
-
-	// Possibly update the address
-	if cfg.Update != nil {
-		cfg.Address = cfg.Update.Address
-	}
-
-	node, err := dqlite.New(cfg.ID, cfg.Address, dir, dqlite.WithBindAddress("@"), dqlite.WithDialFunc(dial))
-	if err != nil {
-		return nil, errors.Wrap(err, "create dqlite node")
-	}
-
-	if cfg.Update != nil {
-		nodes := []dqlite.NodeInfo{{ID: cfg.ID, Address: cfg.Address}}
-		if err := node.Recover(nodes); err != nil {
-			return nil, errors.Wrap(err, "update configuration")
-		}
-		if err := cfg.Save(dir); err != nil {
+		if err := yaml.Unmarshal(data, &info); err != nil {
 			return nil, err
 		}
-		if err := cfg.Store.Set(context.Background(), nodes); err != nil {
-			return nil, errors.Wrap(err, "update node store")
+		info.Address = cfg.Update.Address
+		data, err = yaml.Marshal(info)
+		if err != nil {
+			return nil, err
+		}
+		if err := ioutil.WriteFile(path, data, 0600); err != nil {
+			return nil, err
+		}
+		nodes := []dqlite.NodeInfo{info}
+		if err := dqlite.ReconfigureMembership(dir, nodes); err != nil {
+			return nil, err
+		}
+		store, err := client.NewYamlNodeStore(filepath.Join(dir, "cluster.yaml"))
+		if err != nil {
+			return nil, err
+		}
+		if err := store.Set(context.Background(), nodes); err != nil {
+			return nil, err
 		}
 		if err := os.Remove(filepath.Join(dir, "update.yaml")); err != nil {
 			return nil, errors.Wrap(err, "remove update.yaml")
 		}
 	}
 
-	if err := node.Start(); err != nil {
-		return nil, errors.Wrap(err, "start dqlite node")
+	options := []app.Option{
+		app.WithTLS(app.SimpleTLSConfig(cfg.KeyPair, cfg.Pool)),
 	}
 
-	return node, nil
-}
+	// Possibly initialize our ID, address and initial node store content.
+	if cfg.Init != nil {
+		options = append(options, app.WithAddress(cfg.Init.Address), app.WithCluster(cfg.Init.Cluster))
+	}
 
-// Create and start the server.
-func startAPI(cfg *config.Config, api *http.Server) error {
-	listener, err := transport.Listen(cfg.Address, cfg.Cert)
+	app, err := app.New(dir, options...)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	go func() {
-		if err := api.Serve(listener); err != http.ErrServerClosed {
-			panic(err)
-		}
-	}()
-	return nil
-}
-
-func initServer(ctx context.Context, cfg *config.Config, membership *membership.Membership) error {
-	if len(cfg.Init.Cluster) > 0 {
-		if err := membership.Add(cfg.ID, cfg.Address); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Returns a dqlite dial function that will establish the connection
-// using the target server's /dqlite HTTP endpoint.
-func dqliteDialFunc(cert *transport.Cert) client.DialFunc {
-	return func(ctx context.Context, addr string) (net.Conn, error) {
-		request := &http.Request{
-			Method:     "POST",
-			Proto:      "HTTP/1.1",
-			ProtoMajor: 1,
-			ProtoMinor: 1,
-			Header:     make(http.Header),
-			Host:       addr,
-		}
-		path := fmt.Sprintf("https://%s/dqlite", addr)
-
-		var err error
-		request.URL, err = url.Parse(path)
-		if err != nil {
+	if cfg.Init != nil {
+		if err := os.Remove(filepath.Join(dir, "init.yaml")); err != nil {
 			return nil, err
 		}
-
-		request.Header.Set("Upgrade", "dqlite")
-		request = request.WithContext(ctx)
-
-		conn, err := transport.Dial(ctx, cert, addr)
-		if err != nil {
-			return nil, errors.Wrap(err, "connect to HTTP endpoint")
-		}
-
-		err = request.Write(conn)
-		if err != nil {
-			return nil, errors.Wrap(err, "HTTP request failed")
-		}
-
-		response, err := http.ReadResponse(bufio.NewReader(conn), request)
-		if err != nil {
-			return nil, errors.Wrap(err, "read response")
-		}
-		if response.StatusCode != http.StatusSwitchingProtocols {
-			return nil, fmt.Errorf("expected status code 101 got %d", response.StatusCode)
-		}
-		if response.Header.Get("Upgrade") != "dqlite" {
-			return nil, fmt.Errorf("missing or unexpected Upgrade header in response")
-		}
-
-		return conn, nil
 	}
-}
 
-func startUpdater(store client.NodeStore, membership *membership.Membership) context.CancelFunc {
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-				servers, err := membership.List()
-				if err != nil {
-					fmt.Printf("Failed to get servers: %v\n", err)
-					continue
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
-				}
-				if err := store.Set(ctx, servers); err != nil {
-					fmt.Printf("Failed to update servers: %v\n", err)
-				}
-			}
-		}
-	}()
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(30 * time.Second):
-				membership.Adjust()
-			}
-		}
-	}()
-	return cancel
-}
+	if err := app.Ready(ctx); err != nil {
+		return nil, err
+	}
 
-func (s *Server) Leader(ctx context.Context) (string, error) {
-	return s.membership.Leader()
-}
+	socket := filepath.Join(dir, "kine.sock")
+	peers := filepath.Join(dir, "cluster.yaml")
+	config := endpoint.Config{
+		Listener: fmt.Sprintf("unix://%s", socket),
+		Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s&driver-name=%s", peers, app.Driver()),
+	}
+	kineCtx, cancelKine := context.WithCancel(context.Background())
+	if _, err := endpoint.Listen(kineCtx, config); err != nil {
+		return nil, errors.Wrap(err, "kine")
+	}
 
-func (s *Server) Cert() *transport.Cert {
-	return s.cert
+	s := &Server{
+		dir:        dir,
+		address:    cfg.Address,
+		app:        app,
+		cancelKine: cancelKine,
+	}
+
+	return s, nil
 }
 
 func (s *Server) Close(ctx context.Context) error {
-	s.cancelUpdater()
-	s.membership.Shutdown()
-	if err := s.api.Shutdown(ctx); err != nil {
-		return errors.Wrap(err, "shutdown API server")
-	}
 	if s.cancelKine != nil {
 		s.cancelKine()
 	}
-	if err := s.node.Close(); err != nil {
-		return errors.Wrap(err, "stop dqlite node")
+	s.app.Handover(ctx)
+	if err := s.app.Close(); err != nil {
+		return errors.Wrap(err, "stop dqlite app")
 	}
 	return nil
-}
-
-func dqliteLogFunc(l client.LogLevel, format string, a ...interface{}) {
-	msg := fmt.Sprintf("dqlite: "+format, a...)
-	switch l {
-	case client.LogDebug:
-		logrus.Debug(msg)
-	case client.LogInfo:
-		logrus.Info(msg)
-	case client.LogWarn:
-		logrus.Warn(msg)
-	case client.LogError:
-		logrus.Error(msg)
-	}
 }

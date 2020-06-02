@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/freeekanayaka/kvsql/server"
 	"github.com/freeekanayaka/kvsql/server/config"
@@ -57,8 +58,11 @@ func TestNew_SecondNode_Init(t *testing.T) {
 	s2, err := server.New(dir2)
 	require.NoError(t, err)
 
-	require.NoError(t, s1.Close(context.Background()))
-	require.NoError(t, s2.Close(context.Background()))
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+
+	s1.Close(ctx)
+	s2.Close(ctx)
 }
 
 func TestNew_FirstNode_Kine(t *testing.T) {
@@ -78,6 +82,27 @@ func TestNew_FirstNode_Kine(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, server.Close(context.Background()))
+}
+
+func TestNew_Update(t *testing.T) {
+	init := &config.Init{Address: "localhost:9991"}
+	dir, cleanup := newDirWithInit(t, init)
+	defer cleanup()
+
+	s, err := server.New(dir)
+	require.NoError(t, err)
+
+	require.NoError(t, s.Close(context.Background()))
+
+	path := filepath.Join(dir, "update.yaml")
+	data, err := yaml.Marshal(struct{ Address string }{Address: "localhost:9992"})
+	require.NoError(t, err)
+	require.NoError(t, ioutil.WriteFile(path, data, 0644))
+
+	s, err = server.New(dir)
+	require.NoError(t, err)
+
+	require.NoError(t, s.Close(context.Background()))
 }
 
 // Return a new temporary directory populated with the test cluster certificate
