@@ -85,7 +85,7 @@ func New(dir string) (*Server, error) {
 	kinedriver.Dialer = dial
 	kinedriver.Logger = dqliteLogFunc
 	socket := filepath.Join(dir, "kine.sock")
-	peers := filepath.Join(dir, "servers.sql")
+	peers := filepath.Join(dir, "cluster.yaml")
 	// logrus.SetLevel(logrus.DebugLevel)
 	config := endpoint.Config{
 		Listener: fmt.Sprintf("unix://%s", socket),
