@@ -5,18 +5,22 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 )
 
 // Config holds the server configuraton loaded from disk.
 type Config struct {
-	KeyPair tls.Certificate
-	Pool    *x509.CertPool
-	Init    *Init   // Initialization parameters, for new servers.
-	Address string  // Server address
-	Update  *Update // Configuration updates
+	KeyPair       tls.Certificate
+	Pool          *x509.CertPool
+	Init          *Init   // Initialization parameters, for new servers.
+	Address       string  // Server address
+	Update        *Update // Configuration updates
+	FailureDomain uint64
 }
 
 // Load current the configuration from disk.
@@ -59,12 +63,45 @@ func Load(dir string) (*Config, error) {
 		}
 	}
 
+	domain, err := loadFailureDomain(dir)
+	if err != nil {
+		return nil, err
+	}
+
 	config := &Config{
-		KeyPair: keypair,
-		Pool:    pool,
-		Init:    init,
-		Update:  update,
+		KeyPair:       keypair,
+		Pool:          pool,
+		Init:          init,
+		Update:        update,
+		FailureDomain: domain,
 	}
 
 	return config, nil
+}
+
+// Load failure-domain if present, or return 0 otherwise.
+func loadFailureDomain(dir string) (uint64, error) {
+	path := filepath.Join(dir, "failure-domain")
+
+	if _, err := os.Stat(path); err != nil {
+		if !os.IsNotExist(err) {
+			return 0, errors.Wrap(err, "check if failure-domain exists")
+		}
+		return 0, nil
+
+	}
+
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return 0, errors.Wrap(err, "read failure-domain")
+	}
+
+	text := strings.Trim(string(data), "\n")
+
+	n, err := strconv.Atoi(text)
+	if err != nil || n < 0 {
+		return 0, errors.Wrapf(err, "invalid failure domain %q", text)
+	}
+
+	return uint64(n), nil
 }

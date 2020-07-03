@@ -38,6 +38,8 @@ github.com/canonical/go-dqlite v1.5.2 h1:fe0Rc5OUKdHxB8nKfBEw9REw/HGK4WeXXR04Jtv
 github.com/canonical/go-dqlite v1.5.2/go.mod h1:wp00vfMvPYgNCyxcPdHB5XExmDoCGoPUGymloAQT17Y=
 github.com/canonical/go-dqlite v1.6.0 h1:pGsSFWovRZGYamA2ASxyac8UmgVFtsr0byRmgTv4iLY=
 github.com/canonical/go-dqlite v1.6.0/go.mod h1:MVgCUhFflG7GDAwb6q2CDp5kmdHyIX+XXkATDsiaDzw=
+github.com/canonical/go-dqlite v1.7.0 h1:5AyISbm9VnPiAjFCUyQ882ppXv8U8d006EGCkmFdAVQ=
+github.com/canonical/go-dqlite v1.7.0/go.mod h1:MVgCUhFflG7GDAwb6q2CDp5kmdHyIX+XXkATDsiaDzw=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cespare/xxhash v1.1.0/go.mod h1:XrSqR1VqqWfGrhpAt58auRo0WTKS1nRRg3ghfAqPWnc=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=

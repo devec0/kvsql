@@ -20,6 +20,7 @@ var initialFilenames = []string{
 	"init.yaml",
 	"cluster.key",
 	"cluster.crt",
+	"failure-domain",
 }
 
 // Load init.yaml if present, or return nil otherwise.

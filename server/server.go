@@ -68,6 +68,7 @@ func New(dir string) (*Server, error) {
 
 	options := []app.Option{
 		app.WithTLS(app.SimpleTLSConfig(cfg.KeyPair, cfg.Pool)),
+		app.WithFailureDomain(cfg.FailureDomain),
 	}
 
 	// Possibly initialize our ID, address and initial node store content.
