@@ -93,10 +93,9 @@ func New(dir string) (*Server, error) {
 		return nil, err
 	}
 
-	socket := filepath.Join(dir, "kine.sock")
 	peers := filepath.Join(dir, "cluster.yaml")
 	config := endpoint.Config{
-		Listener: fmt.Sprintf("unix://%s", socket),
+	        Listener: "localhost:2379",
 		Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s&driver-name=%s", peers, app.Driver()),
 	}
 	kineCtx, cancelKine := context.WithCancel(context.Background())

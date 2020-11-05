@@ -73,8 +73,7 @@ func TestNew_FirstNode_Kine(t *testing.T) {
 	server, err := server.New(dir)
 	require.NoError(t, err)
 
-	sock := filepath.Join(dir, "kine.sock")
-	cfg := clientv3.Config{Endpoints: []string{fmt.Sprintf("unix://%s", sock)}}
+	cfg := clientv3.Config{Endpoints: []string{"localhost:2379"}}
 	client, err := clientv3.New(cfg)
 	require.NoError(t, err)
 

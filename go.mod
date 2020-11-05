@@ -1,4 +1,4 @@
-module github.com/freeekanayaka/kvsql
+module github.com/devec0/kvsql
 
 go 1.14
 
@@ -29,8 +29,4 @@ require (
 	gopkg.in/yaml.v2 v2.3.0
 	k8s.io/apimachinery v0.17.0
 	k8s.io/apiserver v0.17.0
-)
-
-replace (
-	github.com/rancher/kine => github.com/freeekanayaka/kine v0.4.1-0.20200624100627-dd35576ecefb
 )
