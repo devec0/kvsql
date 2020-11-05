@@ -73,7 +73,7 @@ func TestNew_FirstNode_Kine(t *testing.T) {
 	server, err := server.New(dir)
 	require.NoError(t, err)
 
-	cfg := clientv3.Config{Endpoints: []string{"localhost:2379"}}
+	cfg := clientv3.Config{Endpoints: []string{"localhost:12379"}}
 	client, err := clientv3.New(cfg)
 	require.NoError(t, err)
 
