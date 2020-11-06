@@ -12,7 +12,7 @@ require (
 	github.com/json-iterator/go v1.1.10 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/rancher/kine v0.5.0
-	github.com/sirupsen/logrus v1.6.0 // indirect
+	github.com/sirupsen/logrus v1.6.0
 	github.com/stretchr/testify v1.6.0
 	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
 	go.uber.org/zap v1.15.0 // indirect

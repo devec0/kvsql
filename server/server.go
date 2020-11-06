@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
+	
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/app"
 	"github.com/canonical/go-dqlite/client"
@@ -15,6 +15,7 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
 	"github.com/rancher/kine/pkg/endpoint"
+	"github.com/sirupsen/logrus"
 )
 
 // Server sets up a single dqlite node and serves the cluster management API.
@@ -26,6 +27,10 @@ type Server struct {
 }
 
 func New(dir string) (*Server, error) {
+
+	// Set up logging, this should be configurable in future
+	logrus.SetLevel(logrus.TraceLevel)
+
 	// Check if we're initializing a new node (i.e. there's an init.yaml).
 	cfg, err := config.Load(dir)
 	if err != nil {
@@ -95,7 +100,7 @@ func New(dir string) (*Server, error) {
 
 	peers := filepath.Join(dir, "cluster.yaml")
 	config := endpoint.Config{
-	        Listener: "localhost:12379",
+	        Listener: "tcp://localhost:12379",
 		Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s&driver-name=%s", peers, app.Driver()),
 	}
 	kineCtx, cancelKine := context.WithCancel(context.Background())
