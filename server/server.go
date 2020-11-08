@@ -119,6 +119,7 @@ func New(dir string) (*Server, error) {
 	if _, err := endpoint.Listen(kineCtx, config); err != nil {
 		log.Infof("Kine context exited in error: %v", err)
 		<-kineCtx.Done()
+		cancelKine()
 		return nil, errors.Wrap(err, "kine")
 	}
 
