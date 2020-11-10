@@ -7,13 +7,12 @@ import (
 	"path/filepath"
 	"testing"
 	//"time"
-	//"log"
 
 	"github.com/devec0/kvsql/server"
 	"github.com/devec0/kvsql/server/config"
 	"github.com/ghodss/yaml"
 	"github.com/stretchr/testify/require"
-	//"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/clientv3"
 )
 
 func TestNew_FirstNode_Init(t *testing.T) {
@@ -27,26 +26,23 @@ func TestNew_FirstNode_Init(t *testing.T) {
 	require.NoError(t, server.Close(context.Background()))
 }
 
-/*
 func TestNew_FirstNode_Restart(t *testing.T) {
-	log.Printf("Starting restart test")
 	init := &config.Init{Address: "localhost:9991"}
 	dir, cleanup := newDirWithInit(t, init)
 	defer cleanup()
 
-	log.Printf("Starting 2nd server")
 	s, err := server.New(dir)
 	require.NoError(t, err)
 
-	log.Printf("Closing 2nd server")
 	require.NoError(t, s.Close(context.Background()))
 
-	//s, err = server.New(dir)
-	//require.NoError(t, err)
+	s, err = server.New(dir)
+	require.NoError(t, err)
 
-	//require.NoError(t, s.Close(context.Background()))
+	require.NoError(t, s.Close(context.Background()))
 }
 
+/*
 func TestNew_SecondNode_Init(t *testing.T) {
 	init1 := &config.Init{Address: "localhost:9991"}
 	dir1, cleanup1 := newDirWithInit(t, init1)
@@ -68,6 +64,7 @@ func TestNew_SecondNode_Init(t *testing.T) {
 	s1.Close(ctx)
 	s2.Close(ctx)
 }
+*/
 
 func TestNew_FirstNode_Kine(t *testing.T) {
 	init := &config.Init{Address: "localhost:9991"}
@@ -107,7 +104,6 @@ func TestNew_Update(t *testing.T) {
 
 	require.NoError(t, s.Close(context.Background()))
 }
-*/
 
 // Return a new temporary directory populated with the test cluster certificate
 // and an init.yaml file with the given content.

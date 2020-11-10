@@ -2,6 +2,11 @@ module github.com/devec0/kvsql
 
 go 1.14
 
+replace (
+	github.com/devec0/kine => github.com/chris-sanders/kine v0.5.2-0.20201110025446-96a1966c7f90
+	github.com/rancher/kine => github.com/chris-sanders/kine v0.5.2-0.20201110025446-96a1966c7f90
+)
+
 require (
 	github.com/canonical/go-dqlite v1.8.0
 	github.com/devec0/kine v0.5.2
@@ -24,5 +29,3 @@ require (
 	k8s.io/apiserver v0.17.0
 	k8s.io/klog/v2 v2.4.0
 )
-
-replace github.com/rancher/kine => github.com/devec0/kine v0.5.2
