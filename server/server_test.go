@@ -2,12 +2,11 @@ package server_test
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
+	//"time"
 
 	"github.com/devec0/kvsql/server"
 	"github.com/devec0/kvsql/server/config"
@@ -43,6 +42,7 @@ func TestNew_FirstNode_Restart(t *testing.T) {
 	require.NoError(t, s.Close(context.Background()))
 }
 
+/*
 func TestNew_SecondNode_Init(t *testing.T) {
 	init1 := &config.Init{Address: "localhost:9991"}
 	dir1, cleanup1 := newDirWithInit(t, init1)
@@ -64,6 +64,7 @@ func TestNew_SecondNode_Init(t *testing.T) {
 	s1.Close(ctx)
 	s2.Close(ctx)
 }
+*/
 
 func TestNew_FirstNode_Kine(t *testing.T) {
 	init := &config.Init{Address: "localhost:9991"}

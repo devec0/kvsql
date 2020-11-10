@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-	
+
 	"github.com/canonical/go-dqlite"
 	"github.com/canonical/go-dqlite/app"
 	"github.com/canonical/go-dqlite/client"
@@ -112,13 +112,13 @@ func New(dir string) (*Server, error) {
 	        Listener: "tcp://127.0.0.1:12379",
 		Endpoint: fmt.Sprintf("dqlite://k8s?peer-file=%s&driver-name=%s", peers, app.Driver()),
 	}
-	
+
 	kineCtx, cancelKine := context.WithCancel(context.Background())
 	log.Infof("Starting kine listener on %s", config.Listener)
-	
+
 	if _, err := endpoint.Listen(kineCtx, config); err != nil {
 		log.Infof("Kine context exited in error: %v", err)
-		<-kineCtx.Done()
+		cancelKine()
 		return nil, errors.Wrap(err, "kine")
 	}
 
